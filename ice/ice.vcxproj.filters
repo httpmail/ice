@@ -1,0 +1,76 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="ice">
+      <UniqueIdentifier>{9c72a831-ce72-4d86-8377-69af1abde321}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pg">
+      <UniqueIdentifier>{3a3ef9b6-fad1-44ae-83d4-f70bda417f28}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ice\inc">
+      <UniqueIdentifier>{5d5f8641-291f-4e48-ba40-84860666d5b0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ice\src">
+      <UniqueIdentifier>{0d9f92f6-5dbe-4f6b-867c-1078ad20d5bf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pg\inc">
+      <UniqueIdentifier>{2b5b51b6-4323-41e2-87cc-b2a30aa42dce}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pg\src">
+      <UniqueIdentifier>{d5d7a415-066f-46a0-997c-35a3f221e3c9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="inc\session.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\agent.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\candidate.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\channel.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\media.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\peer.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\pg\inc\pg_log.h">
+      <Filter>pg\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\pg\inc\pg_timer.h">
+      <Filter>pg\inc</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\agent.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\candidate.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\channel.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\media.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\peer.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\session.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\pg\src\pg_log.cpp">
+      <Filter>pg\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\pg\src\pg_timer.cpp">
+      <Filter>pg\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\main.cpp" />
+  </ItemGroup>
+</Project>
