@@ -1,3 +1,7 @@
 Debug/*.*
 ice.VC.VC.opendb
 ice.VC.db
+ice/Debug/*.*
+ice/ice.vcxproj
+.vs/ice/v15
+.vs/

@@ -1,4 +1,0 @@
-﻿  pg_log.cpp
-d:\project\ice\pg\src\pg_log.cpp(91): warning C4101: 'e': unreferenced local variable
-  ice.vcxproj -> D:\project\ice\Debug\ice.exe
-  ice.vcxproj -> D:\project\ice\Debug\ice.pdb (Full PDB)
