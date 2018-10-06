@@ -2,55 +2,63 @@
 
 #include <map>
 #include <vector>
+#include <condition_variable>
+#include <mutex>
 #include "pg_object.h"
 
 namespace PG{
-    class MSG : public CObject{
+    class MsgEntity : CObject {
     public:
+        using MSG_ID = uint16_t;
         using WPARAM = void*;
         using LPARAM = void*;
-        using MSG_ID = uint16_t;
 
     public:
-        MSG(const std::string& unique_name);
-        virtual ~MSG() = 0 {}
+        MsgEntity(const std::string& unique_name);
+        virtual ~MsgEntity();
 
     public:
-        bool send(MSG *receiver,               MSG_ID msgId, WPARAM wParam, LPARAM lParam);
-        bool send(const std::string& receiver, MSG_ID msgId, WPARAM wParam, LPARAM lParam);
+        void Close();
 
-        bool post(MSG *receiver,               MSG_ID msgId, WPARAM wParam, LPARAM lParam);
-        bool post(const std::string& receiver, MSG_ID msgId, WPARAM wParam, LPARAM lParam);
-
-    protected:
-        virtual void OnMsgReceived(MSG *sender, MSG_ID msgId, WPARAM wParam, LPARAM lParam) = 0 {};
+    public:
+        static bool SendMessage(const std::string& receiver, MSG_ID msgId, WPARAM wParam, LPARAM lParam);
+        static bool PostMessage(const std::string& receiver, MSG_ID msgId, WPARAM wParam, LPARAM lParam);
 
     private:
-        class MsgWrapper {
+        class CMsgWrapper {
         public:
-            MsgWrapper(MSG_ID msgId, WPARAM wParam, LPARAM lParam) :
-                m_msg_id(msgId), m_wparam(wParam),m_lparam(lParam)
+            CMsgWrapper(MSG_ID msgId, WPARAM wParam, LPARAM lParam) :
+                m_msg_id(msgId), m_wparam(wParam), m_lparam(lParam)
             {
             }
+            virtual ~CMsgWrapper() {}
 
-            MSG_ID  MsgId() const  { return m_msg_id; }
-            WPARAM  WParam() const { return m_wparam; }
-            LPARAM  LParam() const { return m_lparam; }
+            MSG_ID MsgId()  const { return m_msg_id; }
+            WPARAM WParam() const { return m_wparam; }
+            LPARAM LParam() const { return m_lparam; }
+
         private:
-            MSG_ID  m_msg_id;
-            WPARAM  m_wparam;
-            LPARAM  m_lparam;
+            MSG_ID m_msg_id;
+            WPARAM m_wparam;
+            LPARAM m_lparam;
         };
+        using MsgEntityContainer = std::map<std::string, MsgEntity*>;
+        using MsgQueue           = std::vector<CMsgWrapper>;
+
+    protected:
+        virtual void OnMsgReceived(MSG_ID msgId, WPARAM wParam, LPARAM lParam) = 0 {};
+
+    protected:
+        static void MsgDispitcherThread(MsgEntity *pOwn);
 
     private:
-        using MsgNameMap = std::map<std::string, MSG*>;
-        using MsgObjMap  = std::map<MSG*, std::string>;
-        using MsgQueue = std::vector<MsgWrapper*>;
+        MsgQueue                m_msg_queue;
+        std::condition_variable m_queue_condition;
+        std::mutex              m_queue_mutex;
+        std::thread             m_thread;
+        bool                    m_quit;
 
     private:
-
-    private:
-        static MsgNameMap sMsgNameMap;
-        static MsgObjMap  sMsgObjMap;
+        static MsgEntityContainer m_msg_entities;
     };
 }

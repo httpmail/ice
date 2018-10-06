@@ -90,6 +90,7 @@ namespace PG {
         }
         catch (const boost_fs::filesystem_error& e)
         {
+            (void)e;
         }
     }
 

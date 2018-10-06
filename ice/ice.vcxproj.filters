@@ -45,10 +45,10 @@
     <ClInclude Include="..\pg\inc\pg_timer.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
-    <ClInclude Include="..\pg\inc\pg_msg.h">
+    <ClInclude Include="..\pg\inc\pg_object.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
-    <ClInclude Include="..\pg\inc\pg_object.h">
+    <ClInclude Include="..\pg\inc\pg_msg.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
   </ItemGroup>
