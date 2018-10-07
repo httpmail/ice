@@ -115,6 +115,59 @@ namespace ICE {
         }
     }
 
+
+    bool CTCPServerChannel::BindLocal(const std::string & ip, int port) noexcept
+    {
+        try
+        {
+            m_acceptor.bind(boost_tcp::endpoint(boost::asio::ip::address::from_string(ip), port));
+            return true;
+        }
+        catch (const boost::system::system_error& boost_error)
+        {
+            LOG_ERROR("tcp-server-channel", "BindLocal exception: %s", boost_error.what());
+            return false;
+        }
+    }
+
+    //////////////////////// CTCPServerChannel Class /////////////////////
+    bool CTCPServerChannel::Listen(int backlog) noexcept
+    {
+        try
+        {
+            m_acceptor.listen(backlog);
+            return true;
+        }
+        catch (const boost::system::system_error& boost_error)
+        {
+            LOG_ERROR("tcp-server-channel", "Listen exception: %s", boost_error.what());
+            return false;
+        }
+    }
+
+    CTCPChannel* CTCPServerChannel::Accept()
+    {
+        try
+        {
+            CTCPChannel c;
+            std::auto_ptr<CTCPChannel> tcpChannel(new CTCPChannel());
+            if (tcpChannel.get())
+            {
+                m_acceptor.accept(tcpChannel->Socket());
+                return tcpChannel.release();
+            }
+            else
+            {
+                return nullptr;
+            }
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("tcp-server-channel", "Accept exception :%s", e.what());
+            return nullptr;
+        }
+    }
+
     //////////////////////// CUDPChannel Class //////////////////////////
     CUDPChannel::CUDPChannel() :
         m_socket(m_io_service)
@@ -225,55 +278,10 @@ namespace ICE {
         }
     }
 
-    //////////////////////// CUDPChannel Class //////////////////////////
-    CTCPServerChannel::~CTCPServerChannel()
+    CAsyncTCPChannel::CAsyncTCPChannel(const std::string & unique_name) :
+        CTCPChannel(), PG::MsgEntity(unique_name)
     {
-    }
-
-    bool CTCPServerChannel::AddClient(boost_tcp::socket * client_socket)
-    {
-        try
-        {
-            return true;
-        }
-        catch (const std::exception&)
-        {
-            LOG_ERROR("tcp-server-channel", "add client[%s:%d] error", 
-                client_socket->local_endpoint().address().to_string().c_str(), 
-                client_socket->local_endpoint().port());
-
-            return false;
-        }
-    }
-
-    bool CTCPServerChannel::ReleaseClient(boost_tcp::socket * client_socket)
-    {
-        return false;
-    }
-
-    void CTCPServerChannel::AcceptThread(CTCPServerChannel * pInstance)
-    {
-        assert(pInstance);
-
-        while (1)
-        {
-            try
-            {
-                std::auto_ptr<boost_tcp::socket> pNew(new boost_tcp::socket(pInstance->m_io_service));
-                if (pNew.get())
-                {
-                    pInstance->m_acceptor.accept(*pNew);
-                }
-            }
-            catch (const std::exception&)
-            {
-                LOG_ERROR("server-channel", "AcceptThread Error");
-            }
-
-        }
-    }
-
-    void CTCPServerChannel::ReceiveThread(CTCPServerChannel * pInstance)
-    {
+        RegisterEvent(Event::write);
+        RegisterEvent(Event::read);
     }
 }

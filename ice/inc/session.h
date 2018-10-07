@@ -10,7 +10,7 @@ class CSession {
 private:
     using MediaContainer     = std::set<CMedia*>;
     using CandidateContainer = std::set<CCandidate*>;
-    using CPeerContainer  = std::set<CPeer*>;
+    using CPeerContainer     = std::set<CPeer*>;
 
 public:
     CSession();
@@ -19,5 +19,5 @@ public:
 private:
     MediaContainer      m_Media;
     CandidateContainer  m_Candidates;
-    CPeerContainer   m_Peers;
+    CPeerContainer      m_Peers;
 };

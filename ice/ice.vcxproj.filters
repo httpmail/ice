@@ -51,6 +51,9 @@
     <ClInclude Include="..\pg\inc\pg_msg.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
+    <ClInclude Include="..\pg\inc\pg_listener.h">
+      <Filter>pg\inc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent.cpp">
@@ -82,6 +85,9 @@
       <Filter>pg\src</Filter>
     </ClCompile>
     <ClCompile Include="..\pg\src\pg_object.cpp">
+      <Filter>pg\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\pg\src\pg_listener.cpp">
       <Filter>pg\src</Filter>
     </ClCompile>
   </ItemGroup>

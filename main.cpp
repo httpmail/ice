@@ -2,6 +2,7 @@
 #include "pg_log.h"
 #include "channel.h"
 #include <thread>
+#include <iostream>
 
 class Server {
 public:
@@ -34,6 +35,22 @@ private:
 };
 
 
+class root {
+public:
+    root() {}
+    ~root() {}
+public:
+    virtual void get() { std::cout << "root" << std::endl; }
+};
+
+class child : public root {
+public:
+    child() {}
+    ~child() {}
+
+private:
+    void get() { std::cout << "child" << std::endl; }
+};
 int main(void)
 {
     PG::log::Instance().Initlize();
@@ -41,5 +58,11 @@ int main(void)
     LOG_INFO("testing2", "321");
 
     ICE::CTCPChannel tcp;
+
+    root a;
+    child b;
+
+    root *pa = &b;
+    pa->get();
     return 0;
 }

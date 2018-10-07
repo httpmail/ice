@@ -5,9 +5,10 @@
 
 namespace PG {
     CObject::Objects CObject::sOjbects;
-    CObject::CObject(const std::string& unique_name)
+    CObject::CObject(const std::string& unique_name) :
+        m_unique_name(unique_name)
     {
-        assert(sOjbects.find(unique_name) != sOjbects.end());
-        sOjbects.insert(unique_name);
+        assert(sOjbects.find(m_unique_name) != sOjbects.end());
+        sOjbects.insert(m_unique_name);
     }
 }

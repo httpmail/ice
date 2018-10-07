@@ -7,6 +7,8 @@
 #include <mutex>
 #include <condition_variable>
 
+#include "pg_msg.h"
+
 namespace ICE {
     class CChannel {
     protected:
@@ -97,6 +99,8 @@ namespace ICE {
     public:
         CTCPChannel();
         virtual ~CTCPChannel();
+    protected:
+        explicit CTCPChannel(boost_tcp::socket socket);
 
     public:
         virtual std::string GetIPString()const noexcept;
@@ -160,56 +164,30 @@ namespace ICE {
         */
         virtual bool Read(char* buffer, int size) noexcept;
 
+    public:
+        boost_tcp::socket& Socket() { return m_socket; }
+
     protected:
-        boost_tcp::socket   m_socket;
+        boost_tcp::socket m_socket;
     };
 
     /////////////////////// CTCPServerChannel /////////////////////
     class CTCPServerChannel : public CTCPChannel {
-    protected:
-        class Client {
-        public:
-            Client(boost_tcp::socket* socket = nullptr) :
-                m_socket(socket)
-            {
-            }
-
-            virtual ~Client() 
-            {
-                if (m_socket)
-                    delete m_socket;
-                m_socket = nullptr;
-            }
-
-        protected:
-            boost_tcp::socket* m_socket;
-        };
-
-        using ClientContainer = std::set<Client*>;
-
     public:
         CTCPServerChannel(int backlog, int max_client) : 
-            CTCPChannel(), m_acceptor(m_io_service), 
-            m_backlog(backlog), m_max_client(max_client)
+            CTCPChannel(), m_acceptor(m_io_service)
         {
         }
         virtual ~CTCPServerChannel();
 
-    protected:
-        bool AddClient(boost_tcp::socket *client_socket);
-        bool ReleaseClient(boost_tcp::socket *client_socket);
-
-    protected:
-        static void AcceptThread (CTCPServerChannel *pInstance);
-        static void ReceiveThread(CTCPServerChannel *pInstance);
+    public:
+        virtual bool BindLocal(const std::string& ip, int port) noexcept;
+        virtual bool BindRemote(const std::string& remote_ip, int port) noexcept { return false; }
+        bool Listen(int backlog) noexcept;
+        CTCPChannel* Accept();
 
     private:
-        std::mutex              m_clients_mutex;
-        std::condition_variable m_clients_condition;
-        ClientContainer         m_clients;
-        boost_tcp::acceptor     m_acceptor;
-        const int               m_backlog;
-        const int               m_max_client;
+        boost_tcp::acceptor m_acceptor;
     };
 
     /////////////////////// CUDPChannel /////////////////////
@@ -228,8 +206,41 @@ namespace ICE {
         virtual bool Write(const char* buffer, int size) noexcept;
         virtual bool Read(char* buffer, int size) noexcept;
 
-    protected:
+    private:
         boost_udp::socket   m_socket;
         boost_udp::endpoint m_remote_endpoint;
+    };
+
+    class CAsyncTCPChannel : public CTCPChannel, PG::MsgEntity {
+    public:
+        enum Event{
+            write = 0,
+            read,
+        };
+
+    public:
+        CAsyncTCPChannel(const std::string& unique_name);
+        virtual ~CAsyncTCPChannel() {};
+
+    private:
+        virtual bool Write(const char* buffer, int size) noexcept
+        {
+            return CTCPChannel::Write(buffer, size);
+        }
+
+        virtual bool Read(char *buffer, int size) noexcept
+        {
+            return CTCPChannel::Read(buffer, size);
+        }
+
+    public:
+        virtual bool OnRead(const char *buffer, int size) = 0;
+        virtual bool OnWrite() = 0;
+    };
+
+    class CAsyncTCPServerChannel : public CTCPServerChannel {
+    };
+
+    class CAsyncUDPChannel : public CUDPChannel {
     };
 }
