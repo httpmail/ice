@@ -1,68 +1,37 @@
 
 #include "pg_log.h"
+#include "pg_buffer.h"
+
 #include "channel.h"
 #include <thread>
 #include <iostream>
 
-class Server {
-public:
-    Server()
-    {
-    }
-
-    ~Server()
-    {
-        if (m_AcceptThread.joinable())
-            m_AcceptThread.join();
-
-        if (m_ReceiveThread.joinable())
-            m_ReceiveThread.join();
-    }
-
-private:
-    static void AcceptThread(Server* pInstance)
-    {
-    }
-
-    static void ReceiveThread(Server* pInstance)
-    {
-    }
-
-private:
-    std::thread m_AcceptThread;
-    std::thread m_ReceiveThread;
-    ICE::CTCPChannel m_channel;
-};
-
-
-class root {
-public:
-    root() {}
-    ~root() {}
-public:
-    virtual void get() { std::cout << "root" << std::endl; }
-};
-
-class child : public root {
-public:
-    child() {}
-    ~child() {}
-
-private:
-    void get() { std::cout << "child" << std::endl; }
-};
 int main(void)
 {
-    PG::log::Instance().Initlize();
-    LOG_INFO("testing",  "123");
-    LOG_INFO("testing2", "321");
 
-    ICE::CTCPChannel tcp;
+    char tmp[256];
 
-    root a;
-    child b;
+    std::string read_info;
+    const std::string write_info("0123456789");
 
-    root *pa = &b;
-    pa->get();
+    PG::circular_buffer buf(10);
+
+    buf.write(write_info.data(), write_info.length());
+
+    int read_bytes = buf.read(tmp, 3);
+    std::cout << std::string(tmp, read_bytes) << std::endl;
+
+    read_bytes = buf.read(tmp, 3);
+    std::cout << std::string(tmp, read_bytes) << std::endl;
+
+    read_bytes = buf.read(tmp, 3);
+    std::cout << std::string(tmp, read_bytes) << std::endl;
+
+    buf.write(write_info.data(), write_info.length());
+    read_bytes = buf.read(tmp, write_info.length());
+
+    std::cout << std::string(tmp, read_bytes) << std::endl;
+
+
     return 0;
 }

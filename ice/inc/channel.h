@@ -222,16 +222,9 @@ namespace ICE {
         CAsyncTCPChannel(const std::string& unique_name);
         virtual ~CAsyncTCPChannel() {};
 
-    private:
-        virtual bool Write(const char* buffer, int size) noexcept
-        {
-            return CTCPChannel::Write(buffer, size);
-        }
-
-        virtual bool Read(char *buffer, int size) noexcept
-        {
-            return CTCPChannel::Read(buffer, size);
-        }
+    public:
+        virtual bool Write(const char* buffer, int size) noexcept { return true; }
+        virtual bool Read(char *buffer, int size) noexcept { return true; }
 
     public:
         virtual bool OnRead(const char *buffer, int size) = 0;
