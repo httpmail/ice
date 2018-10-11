@@ -35,7 +35,7 @@ int PG::circular_buffer::write(const void * buf, int size)
 
     {
         std::lock_guard<std::mutex> reader_locker(m_reader_mutex);
-        bOverflow = (m_writer > m_reader && (m_end - m_writer) < write_bytes);
+        bOverflow = (m_writer >= m_reader && (m_end - m_writer) < write_bytes);
     }
 
     if (bOverflow)
@@ -73,11 +73,11 @@ int PG::circular_buffer::read(void * buf, int size)
 
     bool bOverflow = false;
     {
-        std::lock_guard<std::mutex> reader_locker(m_reader_mutex);
-        bOverflow = (m_reader > m_writer && (m_end - m_reader) < read_bytes);
+        std::lock_guard<std::mutex> writer_locker(m_writer_mutex);
+        bOverflow = (m_reader >= m_writer && (m_end - m_reader) < read_bytes);
     }
 
-    if (m_writer > m_reader || (m_end - m_reader) > read_bytes)
+    if (bOverflow)
     {
         int to_end_bytes = m_end - m_reader;
         memcpy(buf, m_reader, to_end_bytes);

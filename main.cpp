@@ -108,6 +108,12 @@ int main(void)
     std::cout << e.data() << std::endl;
     std::cout << e.address().to_string() << std::endl;
     std::cout << e.address().is_unspecified() << std::endl;
+
+    e = tcp::endpoint(boost::asio::ip::address::from_string("1"),0);
+
+    std::cout << e.data() << std::endl;
+    std::cout << e.address().to_string() << std::endl;
+    std::cout << e.address().is_unspecified() << std::endl;
     while (1);
     return 0;
 }

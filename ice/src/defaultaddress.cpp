@@ -1,14 +1,18 @@
 #include "defaultaddress.h"
 
 namespace ICE{
-    CDefaultAddress::CDefaultAddress() :
-        m_endpoint(GenerateDefaultEndpoint())
+    CDefaultAddress::CDefaultAddress() 
     {
     }
 
-    boost::asio::ip::tcp::endpoint CDefaultAddress::GenerateDefaultEndpoint(bool bSupportIPv4 /*= true*/)
+    bool CDefaultAddress::GenerateDefaultEndpoint(const std::string& ip /*= ""*/, bool bSupportIPv4 /*= true*/)
     {
         using boost::asio::ip::tcp;
+        if (!m_endpoint.address().is_unspecified())
+            return true;
+
+        m_endpoint.address(boost::asio::ip::address::from_string(ip));
+
         boost::asio::io_service io_service;
         tcp::resolver resolver(io_service);
         tcp::resolver::query query(boost::asio::ip::host_name(), "");
@@ -49,10 +53,10 @@ namespace ICE{
             else if (0 == ep_address.to_string().find("169.254"))  // ipv4 lock-link
                 continue;
 
-            return ep;
+            return 0;
         }
 
         assert(0); // read configure file
-        return tcp::endpoint();
+        return 1;
     }
 }
