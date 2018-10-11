@@ -6,59 +6,24 @@
 
 namespace ICE {
     class CSession;
-
-    class CAgent {
-    public:
-        using SessionContainer = std::map<int, CSession*>;
-
+    class CAgent{
     public:
         class CAgentConfig {
-        public:
-            using ServerContainer = std::set<std::string>;
-
         public:
             CAgentConfig();
             virtual ~CAgentConfig();
 
-            bool AddStunServer(const std::string& stun_server)
-            {
-                return m_stun_server.insert(stun_server).second;
-            }
-
-            const ServerContainer& GetStunServer() const
-            {
-                return m_stun_server;
-            }
-
-            bool AddTurnServer(const std::string& turn_server)
-            {
-                return m_turn_server.insert(turn_server).second;
-            }
-
-            const ServerContainer& GetTurnServer() const
-            {
-                return m_turn_server;
-            }
+        public:
+            bool Initilize(const std::string& config_file);
 
         private:
-            ServerContainer m_stun_server;
-            ServerContainer m_turn_server;
+            uint16_t m_RTO; /* initial value recommended 500ms - 3s */
+            uint16_t m_Ta;  /* default value 50ms */
+            uint16_t m_Rm;  /* default value 16   */
+            uint16_t m_Ti;  /* default value 39500ms(39.5s) */
+            uint16_t m_Rc;  /* default value 7 */
+            uint16_t m_cand_pairs_limits; /* defualt value 100*/
+            bool     m_ipv4_supported; 
         };
-
-    public:
-        CAgent();
-        virtual ~CAgent();
-
-    private:
-        bool DNSResolver(const std::string& domain);
-        bool CreateSession();
-        bool NATDetect(const std::string& server_ip);
-        bool MakeOffer();
-        bool MakeAnswer();
-
-    protected:
-        SessionContainer                 m_sessions;
-        CAgentConfig::ServerContainer m_stun_server;
-        CAgentConfig::ServerContainer m_turn_server;
     };
 }

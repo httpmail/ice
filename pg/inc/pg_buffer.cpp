@@ -23,7 +23,7 @@ int PG::circular_buffer::write(const void * buf, int size)
     if (is_bad())
         return 0;
 
-    std::lock_guard<std::mutex> locker(m_mutex);
+    std::lock_guard<std::mutex> locker(m_writer_mutex);
 
     int remain_bytes = m_capacity - m_size;
     if (remain_bytes == 0)
@@ -31,17 +31,24 @@ int PG::circular_buffer::write(const void * buf, int size)
 
     int write_bytes = remain_bytes > size ? size : remain_bytes;
 
-    if (m_writer < m_reader || (m_end - m_writer) >= write_bytes)
+    bool bOverflow = false;
+
     {
-        memcpy(m_writer, buf, write_bytes);
-        m_writer += write_bytes;
+        std::lock_guard<std::mutex> reader_locker(m_reader_mutex);
+        bOverflow = (m_writer > m_reader && (m_end - m_writer) < write_bytes);
     }
-    else
+
+    if (bOverflow)
     {
         int to_end_bytes = m_end - m_writer;
         memcpy(m_writer, buf, m_end - m_writer);
         memcpy(m_buffer, (uint8_t*)buf + to_end_bytes, write_bytes - to_end_bytes);
         m_writer = m_buffer + write_bytes - to_end_bytes;
+    }
+    else
+    {
+        memcpy(m_writer, buf, write_bytes);
+        m_writer += write_bytes;
     }
 
     m_size += write_bytes;
@@ -58,23 +65,29 @@ int PG::circular_buffer::read(void * buf, int size)
     if (is_bad())
         return 0;
 
-    std::lock_guard<std::mutex> locker(m_mutex);
+    std::lock_guard<std::mutex> locker(m_reader_mutex);
     if (!m_size)
         return 0;
 
     int read_bytes = m_size > size ? size : m_size;
 
-    if (m_writer > m_reader || (m_end - m_reader) > read_bytes)
+    bool bOverflow = false;
     {
-        memcpy(buf, m_reader, read_bytes);
-        m_reader += read_bytes;
+        std::lock_guard<std::mutex> reader_locker(m_reader_mutex);
+        bOverflow = (m_reader > m_writer && (m_end - m_reader) < read_bytes);
     }
-    else
+
+    if (m_writer > m_reader || (m_end - m_reader) > read_bytes)
     {
         int to_end_bytes = m_end - m_reader;
         memcpy(buf, m_reader, to_end_bytes);
         memcpy((uint8_t*)buf + to_end_bytes, m_buffer, read_bytes - to_end_bytes);
         m_reader = m_buffer + read_bytes - to_end_bytes;
+    }
+    else
+    {
+        memcpy(buf, m_reader, read_bytes);
+        m_reader += read_bytes;
     }
 
     m_size -= read_bytes;

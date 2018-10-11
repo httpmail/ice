@@ -4,10 +4,11 @@
 #include <memory>
 
 namespace ICE {
+    boost::asio::io_service CTCPChannel::sIOService;
 
     //////////////////////// CTCPChannel Class //////////////////////////
     CTCPChannel::CTCPChannel() :
-        m_socket(m_io_service)
+        m_socket(sIOService)
     {
     }
 
@@ -15,7 +16,7 @@ namespace ICE {
     {
     }
 
-    std::string CTCPChannel::GetIPString() const noexcept
+    std::string CTCPChannel::IPString() const noexcept
     {
         try
         {
@@ -27,11 +28,23 @@ namespace ICE {
         }
     }
 
-    int CTCPChannel::GetPort() const noexcept
+    int CTCPChannel::Port() const noexcept
     {
         try
         {
             return m_socket.local_endpoint().port();
+        }
+        catch (std::exception&)
+        {
+            return 0;
+        }
+    }
+
+    int CTCPChannel::Protocol() const noexcept
+    {
+        try
+        {
+            return m_socket.local_endpoint().protocol().protocol();
         }
         catch (std::exception&)
         {
@@ -49,7 +62,7 @@ namespace ICE {
         }
         catch (std::exception& e)
         {
-            LOG_ERROR("tcp-channel", "[%s:%d] bind error : %s", GetIPString().c_str(), GetPort(), e.what());
+            LOG_ERROR("tcp-channel", "[%s:%d] bind error : %s", IPString().c_str(), Port(), e.what());
             return false;
         }
         return true;
@@ -63,7 +76,7 @@ namespace ICE {
         }
         catch (std::exception& e)
         {
-            LOG_ERROR("tcp-channel", "[%s:%d] connect error : %s", GetIPString().c_str(), GetPort(), e.what());
+            LOG_ERROR("tcp-channel", "[%s:%d] connect error : %s", IPString().c_str(), Port(), e.what());
             return false;
         }
         return true;
@@ -87,7 +100,7 @@ namespace ICE {
         }
         catch (const std::exception& e)
         {
-            LOG_ERROR("tcp-channel", "[%s : %d] Send error : %s", GetIPString().c_str(), GetPort(), e.what());
+            LOG_ERROR("tcp-channel", "[%s : %d] Send error : %s", IPString().c_str(), Port(), e.what());
             return false;
         }
     }
@@ -110,67 +123,14 @@ namespace ICE {
         }
         catch (const std::exception& e)
         {
-            LOG_ERROR("tcp-channel", "[%s: %d] receive error : %s", GetIPString().c_str(), GetPort(), e.what());
+            LOG_ERROR("tcp-channel", "[%s: %d] receive error : %s", IPString().c_str(), Port(), e.what());
             return false;
-        }
-    }
-
-
-    bool CTCPServerChannel::BindLocal(const std::string & ip, int port) noexcept
-    {
-        try
-        {
-            m_acceptor.bind(boost_tcp::endpoint(boost::asio::ip::address::from_string(ip), port));
-            return true;
-        }
-        catch (const boost::system::system_error& boost_error)
-        {
-            LOG_ERROR("tcp-server-channel", "BindLocal exception: %s", boost_error.what());
-            return false;
-        }
-    }
-
-    //////////////////////// CTCPServerChannel Class /////////////////////
-    bool CTCPServerChannel::Listen(int backlog) noexcept
-    {
-        try
-        {
-            m_acceptor.listen(backlog);
-            return true;
-        }
-        catch (const boost::system::system_error& boost_error)
-        {
-            LOG_ERROR("tcp-server-channel", "Listen exception: %s", boost_error.what());
-            return false;
-        }
-    }
-
-    CTCPChannel* CTCPServerChannel::Accept()
-    {
-        try
-        {
-            CTCPChannel c;
-            std::auto_ptr<CTCPChannel> tcpChannel(new CTCPChannel());
-            if (tcpChannel.get())
-            {
-                m_acceptor.accept(tcpChannel->Socket());
-                return tcpChannel.release();
-            }
-            else
-            {
-                return nullptr;
-            }
-        }
-        catch (const std::exception& e)
-        {
-            LOG_ERROR("tcp-server-channel", "Accept exception :%s", e.what());
-            return nullptr;
         }
     }
 
     //////////////////////// CUDPChannel Class //////////////////////////
     CUDPChannel::CUDPChannel() :
-        m_socket(m_io_service)
+        m_socket(sIOService)
     {
     }
 
@@ -178,7 +138,7 @@ namespace ICE {
     {
     }
 
-    std::string CUDPChannel::GetIPString() const noexcept
+    std::string CUDPChannel::IPString() const noexcept
     {
         try
         {
@@ -190,13 +150,25 @@ namespace ICE {
         }
     }
 
-    int CUDPChannel::GetPort() const noexcept
+    int CUDPChannel::Port() const noexcept
     {
         try
         {
             return m_socket.local_endpoint().port();
         }
         catch (std::exception&)
+        {
+            return 0;
+        }
+    }
+
+    int CUDPChannel::Protocol() const noexcept
+    {
+        try
+        {
+            return m_socket.local_endpoint().protocol().protocol();
+        }
+        catch (const std::exception&)
         {
             return 0;
         }
@@ -212,7 +184,7 @@ namespace ICE {
         }
         catch (std::exception& e)
         {
-            LOG_ERROR("udp-channel", "[%s:%d] bind error : %s", GetIPString().c_str(), GetPort(), e.what());
+            LOG_ERROR("udp-channel", "[%s:%d] bind error : %s", IPString().c_str(), Port(), e.what());
             return false;
         }
         return true;
@@ -222,11 +194,11 @@ namespace ICE {
     {
         try
         {
-            m_socket.remote_endpoint() = boost_udp::endpoint(boost::asio::ip::address::from_string(remote_ip), port);
+            m_remote_endpoint = boost_udp::endpoint(boost::asio::ip::address::from_string(remote_ip), port);
         }
         catch (std::exception& e)
         {
-            LOG_ERROR("udp-channel", "[%s:%d] connect error : %s", GetIPString().c_str(), GetPort(), e.what());
+            LOG_ERROR("udp-channel", "[%s:%d] bind remote error : %s", IPString().c_str(), Port(), e.what());
             return false;
         }
         return true;
@@ -238,7 +210,7 @@ namespace ICE {
         try
         {
             boost::system::error_code error;
-            m_socket.send_to(boost::asio::buffer(buffer, size), m_socket.remote_endpoint());
+            m_socket.send_to(boost::asio::buffer(buffer, size), m_remote_endpoint);
             if (boost::asio::error::eof == error)
             {
                 LOG_INFO("udp-channel", "send error: [%s:%d] closed",
@@ -250,7 +222,7 @@ namespace ICE {
         }
         catch (const std::exception& e)
         {
-            LOG_ERROR("udp-channel", "[%s : %d] Send error : %s", GetIPString().c_str(), GetPort(), e.what());
+            LOG_ERROR("udp-channel", "[%s : %d] Send error : %s", IPString().c_str(), Port(), e.what());
             return false;
         }
     }
@@ -261,7 +233,7 @@ namespace ICE {
         try
         {
             boost::system::error_code error;
-            m_socket.receive_from(boost::asio::buffer(buffer, size), m_socket.remote_endpoint());
+            m_socket.receive_from(boost::asio::buffer(buffer, size), m_remote_endpoint);
             if (error == boost::asio::error::eof)
             {
                 LOG_INFO("udp-channel", "send error: [%s:%d] closed",
@@ -273,15 +245,8 @@ namespace ICE {
         }
         catch (const std::exception& e)
         {
-            LOG_ERROR("udp-channel", "[%s: %d] receive error : %s", GetIPString().c_str(), GetPort(), e.what());
+            LOG_ERROR("udp-channel", "[%s: %d] receive error : %s", IPString().c_str(), Port(), e.what());
             return false;
         }
-    }
-
-    CAsyncTCPChannel::CAsyncTCPChannel(const std::string & unique_name) :
-        CTCPChannel(), PG::MsgEntity(unique_name)
-    {
-        RegisterEvent(Event::write);
-        RegisterEvent(Event::read);
     }
 }

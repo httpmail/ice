@@ -15,7 +15,8 @@ namespace PG {
         int is_bad();
 
     private:
-        mutable std::mutex m_mutex;
+        mutable std::mutex m_writer_mutex;
+        mutable std::mutex m_reader_mutex;
 
         uint8_t* const m_buffer;
         uint8_t* const m_end;
