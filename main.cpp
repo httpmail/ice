@@ -3,32 +3,39 @@
 #include "pg_buffer.h"
 
 #include "channel.h"
+#include "ping.h"
 #include <thread>
 #include <iostream>
+#include <ostream>
+#include <fstream>
 
 using boost::asio::ip::tcp;
 
-void Server(void)
+void Thread()
 {
-    boost::asio::io_service io_service;
-    tcp::acceptor acceptor(io_service, tcp::endpoint(boost::asio::ip::address::from_string("fe80::4072:64f3:b7ca:1a0%9"),1234));
-
-
-    std::cout << "server :" << acceptor.local_endpoint().address().to_string() << std::endl;
-    while (1)
-    {
-        tcp::socket socket(io_service);
-        acceptor.accept(socket);
-    }
+    std::cout << "MyThread " << std::this_thread::get_id() << std::endl;
 }
-
 int main(void)
 {
+    ICE::CPing ping("stun.freeswitch.org", 500);
+
+    if (!ping.Run())
+    {
+        return -1;
+    }
+
+    return 0;
+#if 0
     char tmp[256];
 
     std::string read_info;
     const std::string write_info("0123456789");
 
+    Thread();
+
+    std::thread p(Thread);
+
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     PG::circular_buffer buf(10);
 
     buf.write(write_info.data(), write_info.length());
@@ -49,11 +56,9 @@ int main(void)
 
     boost::asio::io_service io_service;
     tcp::resolver resolver(io_service);
-    tcp::resolver::query query(boost::asio::ip::host_name(), "");
+    tcp::resolver::query query("192.168.0.1", "");
     tcp::resolver::iterator iter = resolver.resolve(query);
     tcp::resolver::iterator end;
-
-    auto thread = std::thread(Server);
 
     while (iter != end)
     {
@@ -87,9 +92,8 @@ int main(void)
 
         std::cout << ep.data() << std::endl;
 
-        tcp::socket socket(io_service, ep);
         std::string ipStr = ep.address().is_v4() ? "127.0.0.1" : "1::1";
-        tcp::endpoint remote(boost::asio::ip::address::from_string(ep.address().to_string()), 1234);
+        tcp::endpoint remote(boost::asio::ip::address::from_string(ep.address().to_string()), 3478);
 
         try
         {
@@ -114,6 +118,12 @@ int main(void)
     std::cout << e.data() << std::endl;
     std::cout << e.address().to_string() << std::endl;
     std::cout << e.address().is_unspecified() << std::endl;
-    while (1);
+
+    std::ifstream f("123");
+    if (f.is_open())
+        std::cout << "ok" << std::endl;
+    else
+        std::cout << "failed" << std::endl;
     return 0;
+#endif
 }

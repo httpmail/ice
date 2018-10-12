@@ -57,7 +57,13 @@
     <ClInclude Include="..\pg\inc\pg_buffer.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
-    <ClInclude Include="inc\defaultaddress.h">
+    <ClInclude Include="inc\ping.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\ipv4_header.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\icmp_header.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
   </ItemGroup>
@@ -94,7 +100,7 @@
       <Filter>pg\src</Filter>
     </ClCompile>
     <ClCompile Include="..\pg\inc\pg_buffer.cpp" />
-    <ClCompile Include="src\defaultaddress.cpp">
+    <ClCompile Include="src\ping.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
   </ItemGroup>

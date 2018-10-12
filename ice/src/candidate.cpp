@@ -1,6 +1,5 @@
 #include "candidate.h"
 #include "channel.h"
-#include "defaultaddress.h"
 #include <boost/lexical_cast.hpp>
 #include <memory>
 
@@ -36,7 +35,7 @@ namespace ICE {
     {
         std::auto_ptr<CChannel> channel(CreateChannel(eType));
 
-        const std::string bindIP = ip.length() ? ip : CDefaultAddress::Instance().Endpoint().address().to_string();
+        const std::string bindIP = "";// ip.length() ? ip : CDefaultAddress::Instance().Endpoint().address().to_string();
 
         // channel bind
         if (0 == port)
