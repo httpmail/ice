@@ -6,8 +6,8 @@
 namespace ICE{
     boost::asio::io_service CPing::sIOService;
 
-    CPing::CPing(const std::string& dest_address, uint16_t timeoutMS) :
-        m_destination(dest_address), m_socket(sIOService, icmp::v4()),m_timout(timeoutMS), m_retrytimes(3)
+    CPing::CPing(const std::string& dest_address, uint16_t timeoutMS, boost::asio::io_context& io) :
+        m_destination(dest_address), m_socket(io, icmp::v4()),m_timout(timeoutMS), m_retrytimes(3)
     {
     }
 
@@ -27,7 +27,10 @@ namespace ICE{
             icmp::resolver resolver(sIOService);
             m_dest_ep = *resolver.resolve(icmp::v4(), m_destination, "").begin();
             std::cout << m_dest_ep.address().to_string() << std::endl;
+            std::cout << m_dest_ep.port() << std::endl;
+
             m_send_thread = std::thread(SendThread, this);
+            std::this_thread::sleep_for(std::chrono::seconds(2));
             m_recv_thread = std::thread(RecvThread, this);
 
             return true;
@@ -55,16 +58,13 @@ namespace ICE{
         echo_request.code(0);
 
         echo_request.identifier(pOwn->GetIdentifier());
-
-        echo_request.sequence_number(sequence_number);
-        compute_checksum(echo_request, body.begin(), body.end());
-
         boost::asio::deadline_timer timer(io_service);
 
         std::unique_lock<std::mutex> locker(pOwn->m_mutex);
         while (pOwn->m_retrytimes--)
         {
-            echo_request.sequence_number(sequence_number++);
+            echo_request.sequence_number(++sequence_number);
+            compute_checksum(echo_request, body.begin(), body.end());
             boost::asio::streambuf request_buffer;
             std::ostream os(&request_buffer);
             os << echo_request << body;
@@ -74,11 +74,11 @@ namespace ICE{
             // send data
             try
             {
-                pOwn->m_socket.send_to(request_buffer.data(), pOwn->m_dest_ep);
-                pOwn->m_send_condition.wait_for(locker, std::chrono::seconds(pOwn->m_timout), [&pOwn] {
+                auto ret1 = pOwn->m_socket.send_to(request_buffer.data(), pOwn->m_dest_ep);
+                pOwn->m_state = State::sent;
+                auto ret = pOwn->m_send_condition.wait_for(locker, std::chrono::milliseconds(pOwn->m_timout), [&pOwn] {
                     return pOwn->m_state == CPing::State::received || pOwn->m_state == CPing::State::quit;
                 });
-
                 if (pOwn->m_state == CPing::State::quit)
                     break;
 
@@ -88,10 +88,11 @@ namespace ICE{
             }
             catch (const std::exception&e)
             {
-                std::cout << "error " << e.what() << std::endl;
+                std::cout << "send exception: " << e.what() << std::endl;
             }
         }
 
+        pOwn->m_socket.close();
         pOwn->m_state = CPing::State::quit;
     }
 
@@ -103,11 +104,11 @@ namespace ICE{
             size_t recv_bytes = 0;
             try
             {
-                 recv_bytes = pOwn->m_socket.receive(reply_buffer.prepare(65536));
+                recv_bytes = pOwn->m_socket.receive_from(reply_buffer.prepare(1024),pOwn->m_dest_ep);
             }
             catch (const std::exception& e)
             {
-                std::cout << "recv : " << e.what() << std::endl; 
+                std::cout << "recv exception: " << e.what() << std::endl; 
                 break;
             }
 

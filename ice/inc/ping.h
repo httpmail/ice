@@ -20,7 +20,7 @@ namespace ICE {
         };
 
     public:
-        CPing(const std::string& dest_address, uint16_t timeoutMS);
+        CPing(const std::string& dest_address, uint16_t timeoutMS, boost::asio::io_context& io);
         virtual ~CPing();
 
         bool Run();
@@ -53,6 +53,6 @@ namespace ICE {
         std::condition_variable m_recv_condition;
 
     private:
-        static boost::asio::io_service sIOService;
+        static boost::asio::io_context sIOService;
     };
 }

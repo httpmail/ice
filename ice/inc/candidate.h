@@ -17,8 +17,8 @@ namespace ICE {
     public:
         Candidate(uint8_t comp_id);
         virtual ~Candidate() {}
-        virtual std::string TypeName() const = 0;
-        virtual uint8_t    TypePreference() const = 0;
+        virtual std::string TypeName()       const = 0;
+        virtual uint8_t    TypePreference()  const = 0;
         virtual uint16_t   LocalPreference() const = 0;
 
         bool Initilize(ChannelType eType, const std::string& ip = "", int port = 0);
@@ -42,17 +42,17 @@ namespace ICE {
         virtual ~HostCandidate() {}
 
         virtual std::string TypeName() const override final        { return "host"; }
-        virtual uint8_t     TypePreference() const override final  { return 126; }
+        virtual uint8_t     TypePreference() const override final  { return 126; /* RFC5245 4.1.2.2 */}
         virtual uint16_t    LocalPreference() const override final { return 65535; }
     };
 
-    class SRflxCandidate : public Candidate {
+    class SrflxCandidate : public Candidate {
     public:
-        SRflxCandidate(uint8_t comp_id) : Candidate(comp_id) {}
-        virtual ~SRflxCandidate() {}
+        SrflxCandidate(uint8_t comp_id) : Candidate(comp_id) {}
+        virtual ~SrflxCandidate() {}
 
         virtual std::string TypeName() const override final        { return "srflx"; }
-        virtual uint8_t     TypePreference() const override final  { return 100;}
+        virtual uint8_t     TypePreference() const override final  { return 100; /* RFC5245 4.1.2.2 */}
         virtual uint16_t    LocalPreference() const override final { return 65535;}
 
     protected:
@@ -64,8 +64,21 @@ namespace ICE {
         virtual ~RelayedCandidate() {}
 
         virtual std::string TypeName() const override final         { return "relayed"; }
-        virtual uint8_t     TypePreference() const override final   { return 100; }
+        virtual uint8_t     TypePreference() const override final   { return 0; /* RFC5245 4.1.2.2 */}
         virtual uint16_t    LocalPreference() const override final  { return 65535; }
+
+    protected:
+        CChannel *m_pSflxChannel;
+    };
+
+    class PeerSrflxCandidate : public Candidate {
+    public:
+        PeerSrflxCandidate(uint8_t comp_id) : Candidate(comp_id) {}
+        virtual ~PeerSrflxCandidate() {}
+
+        virtual std::string TypeName() const override final       { return "srflx"; }
+        virtual uint8_t     TypePreference() const override final { return 110; /* RFC5245 4.1.2.2 */ }
+        virtual uint16_t    LocalPreference() const override final{ return 65535; }
 
     protected:
         CChannel *m_pSflxChannel;

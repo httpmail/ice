@@ -66,6 +66,15 @@
     <ClInclude Include="inc\icmp_header.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
+    <ClInclude Include="inc\stundef.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\stunmsg.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="inc\stunprotocol.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent.cpp">
@@ -101,6 +110,12 @@
     </ClCompile>
     <ClCompile Include="..\pg\inc\pg_buffer.cpp" />
     <ClCompile Include="src\ping.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\stunprotocol.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\stunmsg.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
   </ItemGroup>
