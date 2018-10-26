@@ -35,7 +35,6 @@ namespace ICE {
         const uint8_t   m_componet_id;
     };
 
-
     class HostCandidate : public Candidate {
     public:
         HostCandidate(uint8_t comp_id) : Candidate(comp_id) {}

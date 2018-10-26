@@ -5,15 +5,15 @@
 #include <assert.h>
 #include <memory>
 
+#if 0
 namespace PG {
 
     MsgEntity::MsgEntityContainer MsgEntity::m_msg_entities;
 
-    MsgEntity::MsgEntity(const std::string& unique_name) :
-        CObject(unique_name)
+    MsgEntity::MsgEntity()
     {
-        assert(m_msg_entities.find(unique_name) != m_msg_entities.end());
-        m_msg_entities[unique_name] = this;
+        assert(m_msg_entities.find(this) != m_msg_entities.end());
+        m_msg_entities.insert(this)
         m_thread = std::thread(MsgDispitcherThread, this);
     }
 
@@ -195,3 +195,4 @@ namespace PG {
         }
     }
 }
+#endif

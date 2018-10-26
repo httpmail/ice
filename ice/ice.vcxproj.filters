@@ -75,6 +75,9 @@
     <ClInclude Include="inc\stunprotocol.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
+    <ClInclude Include="..\pg\inc\pg_util.h">
+      <Filter>pg\inc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent.cpp">
@@ -117,6 +120,9 @@
     </ClCompile>
     <ClCompile Include="src\stunmsg.cpp">
       <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\pg\src\pg_util.cpp">
+      <Filter>pg\src</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

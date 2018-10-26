@@ -50,7 +50,7 @@ namespace ICE{
 
         std::ostringstream oss;
         oss << std::this_thread::get_id();
-        pOwn->m_identifier = std::stoul(oss.str());
+        pOwn->m_identifier = static_cast<uint16_t>(std::stoul(oss.str()));
 
         // Create an ICMP header for an echo request.
         icmp_header echo_request;

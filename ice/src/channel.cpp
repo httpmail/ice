@@ -82,49 +82,49 @@ namespace ICE {
         return true;
     }
 
-    bool CTCPChannel::Write(const char* buffer, int size) noexcept
+    int16_t CTCPChannel::Write(const char* buffer, int size) noexcept
     {
         assert(m_socket.is_open() && buffer && size);
         try
         {
             boost::system::error_code error;
-            boost::asio::write(m_socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
+            auto sent_bytes = boost::asio::write(m_socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
             if (boost::asio::error::eof == error)
             {
                 LOG_INFO("tcp-channel","send error: [%s:%d] closed", 
                             m_socket.remote_endpoint().address().to_string().c_str(),
                             m_socket.remote_endpoint().port());
-                return false;
+                return 0;
             }
-            return true;
+            return sent_bytes;
         }
         catch (const std::exception& e)
         {
             LOG_ERROR("tcp-channel", "[%s : %d] Send error : %s", IPString().c_str(), Port(), e.what());
-            return false;
+            return -1;
         }
     }
 
-    bool CTCPChannel::Read(char* buffer, int size) noexcept
+    int16_t CTCPChannel::Read(char* buffer, int size) noexcept
     {
         assert(m_socket.is_open() && buffer && size);
         try
         {
             boost::system::error_code error;
-            boost::asio::read(m_socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
+            auto recv_bytes = boost::asio::read(m_socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
             if (error == boost::asio::error::eof)
             {
                 LOG_INFO("tcp-channel", "send error: [%s:%d] closed",
                     m_socket.remote_endpoint().address().to_string().c_str(),
                     m_socket.remote_endpoint().port());
-                return false;
+                return 0;
             }
-            return true;
+            return recv_bytes;
         }
         catch (const std::exception& e)
         {
             LOG_ERROR("tcp-channel", "[%s: %d] receive error : %s", IPString().c_str(), Port(), e.what());
-            return false;
+            return -1;
         }
     }
 
@@ -204,7 +204,7 @@ namespace ICE {
         return true;
     }
 
-    bool CUDPChannel::Write(const char* buffer, int size) noexcept
+    int16_t CUDPChannel::Write(const char* buffer, int size) noexcept
     {
         assert(m_socket.is_open() && buffer && size);
         try
@@ -216,37 +216,37 @@ namespace ICE {
                 LOG_INFO("udp-channel", "send error: [%s:%d] closed",
                     m_socket.remote_endpoint().address().to_string().c_str(),
                     m_socket.remote_endpoint().port());
-                return false;
+                return 0;
             }
-            return true;
+            return size;
         }
         catch (const std::exception& e)
         {
             LOG_ERROR("udp-channel", "[%s : %d] Send error : %s", IPString().c_str(), Port(), e.what());
-            return false;
+            return -1;
         }
     }
 
-    bool CUDPChannel::Read(char* buffer, int size) noexcept
+    int16_t CUDPChannel::Read(char* buffer, int size) noexcept
     {
         assert(m_socket.is_open() && buffer && size);
         try
         {
             boost::system::error_code error;
-            m_socket.receive_from(boost::asio::buffer(buffer, size), m_remote_endpoint);
+            auto read_bytes = m_socket.receive_from(boost::asio::buffer(buffer, size), m_remote_endpoint);
             if (error == boost::asio::error::eof)
             {
                 LOG_INFO("udp-channel", "send error: [%s:%d] closed",
                     m_socket.remote_endpoint().address().to_string().c_str(),
                     m_socket.remote_endpoint().port());
-                return false;
+                return 0;
             }
-            return true;
+            return read_bytes;
         }
         catch (const std::exception& e)
         {
             LOG_ERROR("udp-channel", "[%s: %d] receive error : %s", IPString().c_str(), Port(), e.what());
-            return false;
+            return -1;
         }
     }
 }

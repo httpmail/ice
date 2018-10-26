@@ -81,7 +81,7 @@ namespace ICE {
         * @returns Returns false if an error occurred, otherwise returns true
         *
         */
-        virtual bool Write(const char* buffer, int size) noexcept = 0;
+        virtual int16_t Write(const char* buffer, int size) noexcept = 0;
 
         /// Read some data from the peer endpoint.
         /**
@@ -93,10 +93,11 @@ namespace ICE {
         *
         * @param ec Set to indicate what error occurred, if any.
         *
-        * @returns Returns false if an error occurred,otherwise returns true
+        * @returns Returns
+        *
         *
         */
-        virtual bool Read(char* buffer, int size) noexcept = 0;
+        virtual int16_t Read(char* buffer, int size) noexcept = 0;
 
     protected:
         static boost::asio::io_service sIOService;
@@ -118,8 +119,8 @@ namespace ICE {
     public:
         virtual bool BindLocal(const std::string& ip, int port) noexcept override;
         virtual bool BindRemote(const std::string& remote_ip, int port) noexcept override;
-        virtual bool Write(const char* buffer, int size) noexcept override;
-        virtual bool Read(char* buffer, int size) noexcept override;
+        virtual int16_t Write(const char* buffer, int size) noexcept override;
+        virtual int16_t Read(char* buffer, int size) noexcept override;
 
     private:
         boost_tcp::socket m_socket;
@@ -139,8 +140,8 @@ namespace ICE {
     public:
         virtual bool BindLocal(const std::string& ip, int port) noexcept;
         virtual bool BindRemote(const std::string& remote_ip, int port) noexcept;
-        virtual bool Write(const char* buffer, int size) noexcept;
-        virtual bool Read(char* buffer, int size) noexcept;
+        virtual int16_t Write(const char* buffer, int size) noexcept override;
+        virtual int16_t Read(char* buffer, int size) noexcept override;
 
     private:
         boost_udp::socket   m_socket;
@@ -160,8 +161,8 @@ namespace ICE {
         virtual ~CAsyncTCPChannel() {};
 
     public:
-        virtual bool Write(const char* buffer, int size) noexcept { return true; }
-        virtual bool Read(char *buffer, int size) noexcept { return true; }
+        virtual int16_t Write(const char* buffer, int size) noexcept { return true; }
+        virtual int16_t Read(char *buffer, int size) noexcept { return true; }
 
     public:
         virtual bool OnRead(const char *buffer, int size) = 0;

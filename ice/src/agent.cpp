@@ -58,7 +58,7 @@ namespace{
 
 namespace ICE {
 
-    CAgent::CAgentConfig::CAgentConfig() :
+    CAgentConfig::CAgentConfig() :
         m_RTO(sDefaultRTO),
         m_Ta(sDefaultTa),
         m_Rm(sDefaultRm),
@@ -67,9 +67,26 @@ namespace ICE {
         m_cand_pairs_limits(sCandPairsLimits),
         m_ipv4_supported(sIPv4Supported)
     {
+        m_default_address = GetDefaultIPAddress(sIPv4Supported);
     }
 
-    bool CAgent::CAgentConfig::Initilize(const std::string & config_file)
+    CAgentConfig::CAgentConfig(const CAgentConfig & config)
+    {
+        m_RTO   = config.m_RTO;
+        m_Ta    = config.m_Ta;
+        m_Rm    = config.m_Rm;
+        m_Ti    = config.m_Ti;
+        m_Rc    = config.m_Rc;
+
+        m_cand_pairs_limits = config.m_Rc;
+        m_ipv4_supported    = config.m_ipv4_supported;
+        m_default_address   = config.m_default_address;
+
+        m_stun_servers = config.m_stun_servers;
+        m_turn_servers = config.m_turn_servers;
+    }
+
+    bool CAgentConfig::LoadConfigFile(const std::string & config_file)
     {
         if (boost::filesystem::exists(config_file))
         {
@@ -85,13 +102,21 @@ namespace ICE {
         return true;
     }
 
-    bool CAgent::CAgentConfig::AddStunServer(const std::string & stun, int port /*= 3478*/)
+    bool CAgentConfig::AddStunServer(const std::string & stun, int port /*= 3478*/)
     {
-        return true;
+        return AddServer(m_stun_servers, stun, port);
     }
 
-    bool CAgent::CAgentConfig::AddTurnServer(const std::string & turn, int port /*= 3478*/)
+    bool CAgentConfig::AddTurnServer(const std::string & turn, int port /*= 3478*/)
     {
-        return true;
+        return AddServer(m_turn_servers, turn, port);
+    }
+
+    bool CAgentConfig::AddServer(ServerContainer & serverContainer, const std::string & server, int port)
+    {
+        if (serverContainer.find(server) != serverContainer.end())
+            return true;
+
+        return serverContainer.insert(std::make_pair(server, port)).second;
     }
 }

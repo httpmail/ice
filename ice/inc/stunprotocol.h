@@ -6,6 +6,7 @@ namespace STUN {
 
     class Message;
     namespace PROTOCOL{
+
         class RFC3489 {
         public:
             static uint16_t EncodeAttribute(const ATTR::MappedAddressAttr &attr, uint8_t* buf);
@@ -23,6 +24,9 @@ namespace STUN {
             static uint16_t EncodeAttribute(const ATTR::UnknownAttributes &attr, uint8_t* buf);
             static uint16_t EncodeAttribute(const ATTR::UsernameAttr &attr, uint8_t *buf);
             static uint16_t EncodeAttribute(const ATTR::XorMappedAddressAttr &attr, uint8_t *buf);
+            static uint16_t EncodeAttribute(const ATTR::Nonce &attr, uint8_t *buf);
+            static uint16_t EncodeAttribute(const ATTR::Realm &attr, uint8_t *buf);
+            static uint16_t EncodeAttribute(const ATTR::Software &attr, uint8_t *buf);
 
             static uint16_t Finalize(const Message &message, uint8_t *attr_buf, uint16_t length);
 

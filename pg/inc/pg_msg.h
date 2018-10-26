@@ -1,6 +1,7 @@
 #pragma once
 
-#include <map>
+#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 #include <condition_variable>
 #include <mutex>
@@ -9,14 +10,15 @@
 namespace PG{
     class CListener;
 
-    class MsgEntity : CObject {
+    class MsgEntity {
     public:
         using MSG_ID = uint16_t;
         using WPARAM = void*;
         using LPARAM = void*;
 
     public:
-        MsgEntity(const std::string& unique_name);
+        MsgEntity();
+        MsgEntity(const MsgEntity&) = delete;
         virtual ~MsgEntity();
 
     public:
@@ -58,10 +60,10 @@ namespace PG{
         static void MsgDispitcherThread(MsgEntity *pOwn);
 
     private:
-        using MsgEntityContainer = std::map<std::string, MsgEntity*>;
+        using MsgEntityContainer = std::unordered_set<MsgEntity*>;
         using MsgQueue           = std::vector<CMsgWrapper>;
         using ListenerContainer  = std::set<CListener*>;
-        using EventLisennerVes   = std::map<MSG_ID, ListenerContainer*>;
+        using EventLisennerVes   = std::unordered_map<MSG_ID, ListenerContainer*>;
 
     private:
         EventLisennerVes        m_listeners;

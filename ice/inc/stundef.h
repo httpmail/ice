@@ -1,12 +1,18 @@
 #pragma once
 
 #include <stdint.h>
+#pragma warning (disable:4200)
 
 namespace STUN {
 
     static const uint32_t sMagicCookie  = 0x2112A442;
     static const int sIPv4PathMTU       = 548;
     static const int sIPv6PathMTU       = 1280;
+
+    enum class AgentRole : uint8_t {
+        Controlling = 0,
+        Controlled = 1,
+    };
 
     enum class ErrorCode : uint16_t{
         BadReq                  = 404,
@@ -49,24 +55,29 @@ namespace STUN {
     {
 
         enum class Identifier : uint16_t {
-            MappedAddress = 0x0001,
-            RespAddress = 0x0002,
-            ChangeReq = 0x0003,
-            SourceAddress = 0x0004,
-            ChangedAddress = 0x0005,
-            Username = 0x0006,
-            Password = 0x0007,
+            MappedAddress   = 0x0001,
+            RespAddress     = 0x0002,
+            ChangeReq       = 0x0003,
+            SourceAddress   = 0x0004,
+            ChangedAddress  = 0x0005,
+            Username        = 0x0006,
+            Password        = 0x0007,
 
             MessageIntegrity = 0x0008,
-            ErrorCode = 0x0009,
+            ErrorCode        = 0x0009,
 
             UnknownAttributes = 0x000A,
-            ReflectedFrom = 0x000B,
+            ReflectedFrom     = 0x000B,
 
             Realm = 0x0014,
             Nonce = 0x0015,
 
             XorMappedAddress = 0x0020,
+
+            Priority        = 0x0024, /* RFC8445 16.1 */
+            UseCandidate    = 0x0025, /* RFC8445 16.1 */
+            IceControlled   = 0x0026, /* RFC8445 16.1 */
+            IceControlling  = 0x0027, /* RFC8445 16.1 */
 
             Software = 0x8022,
             AlternateServer = 0x8023,
@@ -217,18 +228,44 @@ namespace STUN {
         struct AlternateServer : MappedAddressAttr {
             AlternateServer() : MappedAddressAttr(Identifier::AlternateServer) {}
         };
+
+        struct Priority : stun_attr_header {
+            Priority() : stun_attr_header(Identifier::Priority) {}
+            Priority(uint32_t priority) : stun_attr_header(Identifier::Priority), _value(priority) {}
+
+            uint32_t _value;
+        };
+
+        struct UseCandidate : stun_attr_header {
+            UseCandidate() : stun_attr_header(Identifier::UseCandidate) {}
+        };
+
+        struct IceControlled : stun_attr_header {
+            IceControlled() : stun_attr_header(Identifier::IceControlled) {}
+        };
+
+        struct IceControlling : stun_attr_header {
+            IceControlling() : stun_attr_header(Identifier::IceControlling) {}
+        };
     }
 
     namespace PACKET{
         struct udp_stun_packet_header {
             uint16_t HeaderLength() const { return sizeof(udp_stun_packet_header); }
+            uint16_t PacketLength() const { return _length; }
+            void PacketLength(uint16_t len) { _length = len; }
+            void MsgIdentifier(uint16_t id) { _id = id; }
             uint16_t _id;
             uint16_t _length;
             uint8_t  _transation[16];
         };
 
         struct tcp_stun_packet_header {
-            uint16_t HeaderLength() const { return sizeof(tcp_stun_packet_header); }
+            uint16_t HeaderLength() const   { return sizeof(tcp_stun_packet_header); }
+            uint16_t PacketLength() const   { return _length; }
+            void PacketLength(uint16_t len) { _length = len; }
+            void MsgIdentifier(uint16_t id) { _id = id; }
+
             uint16_t _framing;
             uint16_t _id;
             uint16_t _length;
