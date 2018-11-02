@@ -28,7 +28,7 @@ namespace ICE {
             }
 
             uint16_t Lower() const { return m_lower; }
-            uint16_t upper() const { return m_upper; }
+            uint16_t Upper() const { return m_upper; }
 
             ~PortRange() {}
 
@@ -68,6 +68,8 @@ namespace ICE {
                 m_role = role;
         }
 
+        const PortRange& GetPortRange() const { return m_PortRange; }
+
     private:
         static bool AddServer(ServerContainer &serverContainer, const std::string& server, int port);
 
@@ -82,6 +84,7 @@ namespace ICE {
         std::string m_default_address;/* default ip for candidate gathering */
 
         STUN::AgentRole m_role;
+        PortRange       m_PortRange;
         ServerContainer m_stun_servers;
         ServerContainer m_turn_servers;
 
@@ -93,6 +96,8 @@ namespace ICE {
         static const uint16_t sDefaultRc = 7;
         static const uint16_t sCandPairsLimits = 100;
         static const uint16_t sIPv4Supported = 1;
+        static const uint16_t sLowerPort = 30000;
+        static const uint16_t sUpperPort = 32000;
     };
 
     class CAgent {

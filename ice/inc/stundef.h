@@ -1,13 +1,15 @@
 #pragma once
 
 #include <stdint.h>
+#include <boost/asio.hpp>
 #pragma warning (disable:4200)
 
 namespace STUN {
 
-    static const uint32_t sMagicCookie  = 0x2112A442;
+    static const uint32_t sMagicCookie  = boost::asio::detail::socket_ops::host_to_network_long(0x2112A442);
     static const int sIPv4PathMTU       = 548;
     static const int sIPv6PathMTU       = 1280;
+    static const int sTransationLen     = 16;
 
     enum class AgentRole : uint8_t {
         Controlling = 0,
@@ -76,8 +78,8 @@ namespace STUN {
 
             Priority        = 0x0024, /* RFC8445 16.1 */
             UseCandidate    = 0x0025, /* RFC8445 16.1 */
-            IceControlled   = 0x0026, /* RFC8445 16.1 */
-            IceControlling  = 0x0027, /* RFC8445 16.1 */
+            IceControlled   = 0x8029, /* RFC8445 16.1 */
+            IceControlling  = 0x802A, /* RFC8445 16.1 */
 
             Software = 0x8022,
             AlternateServer = 0x8023,
@@ -230,8 +232,8 @@ namespace STUN {
         };
 
         struct Priority : stun_attr_header {
-            Priority() : stun_attr_header(Identifier::Priority) {}
-            Priority(uint32_t priority) : stun_attr_header(Identifier::Priority), _value(priority) {}
+            Priority() : stun_attr_header(Identifier::Priority) { _length = 4; /* 32 bit */ }
+            Priority(uint32_t priority) : stun_attr_header(Identifier::Priority), _value(priority) { _length = 4; }
 
             uint32_t _value;
         };
@@ -247,13 +249,34 @@ namespace STUN {
         struct IceControlling : stun_attr_header {
             IceControlling() : stun_attr_header(Identifier::IceControlling) {}
         };
+
+        /* 
+         * <RFC8445 16.1>
+         * The content of the ICE-CONTROLLED(or ICE-CONTROLLING) is a 64-bit unsigned
+         * Integer in network byte order, which contains a random number
+         */
+        struct IceRoleAttr : stun_attr_header {
+            IceRoleAttr(bool bControlling) : 
+                stun_attr_header(bControlling ? Identifier::IceControlling : Identifier::IceControlled){
+                _length = 8;
+            }
+            uint64_t _value;
+        };
     }
 
     namespace PACKET{
         struct udp_stun_packet_header {
+            udp_stun_packet_header() :
+                _length(0)
+            {
+            }
             uint16_t HeaderLength() const { return sizeof(udp_stun_packet_header); }
             uint16_t PacketLength() const { return _length; }
             void PacketLength(uint16_t len) { _length = len; }
+
+            uint8_t* Data() { return reinterpret_cast<uint8_t*>(this); }
+            const uint8_t* Data() const { return reinterpret_cast<const uint8_t*>(this); }
+
             void MsgIdentifier(uint16_t id) { _id = id; }
             uint16_t _id;
             uint16_t _length;
@@ -261,9 +284,18 @@ namespace STUN {
         };
 
         struct tcp_stun_packet_header {
+            tcp_stun_packet_header() :
+                _length(0)
+            {
+            }
+
             uint16_t HeaderLength() const   { return sizeof(tcp_stun_packet_header); }
             uint16_t PacketLength() const   { return _length; }
             void PacketLength(uint16_t len) { _length = len; }
+
+            uint8_t* Data() { return reinterpret_cast<uint8_t*>(this); }
+            const uint8_t* Data() const { return reinterpret_cast<const uint8_t*>(this); }
+
             void MsgIdentifier(uint16_t id) { _id = id; }
 
             uint16_t _framing;
@@ -272,20 +304,14 @@ namespace STUN {
             uint8_t  _transation[16];
         };
 
-        struct udp_v4_stun_packet : public udp_stun_packet_header {
-            uint8_t _attr[sIPv4PathMTU];
-        };
-
-        struct upd_v6_stun_packet : public udp_stun_packet_header {
+        struct udp_stun_packet : public udp_stun_packet_header {
             uint8_t _attr[sIPv6PathMTU];
         };
 
-        struct tcp_v4_stun_packet : public tcp_stun_packet_header {
-            uint8_t _attr[sIPv4PathMTU];
-        };
-
-        struct tcp_v6_stun_packet : public tcp_stun_packet_header {
+        struct tcp_stun_packet : public tcp_stun_packet_header {
             uint8_t _attr[sIPv6PathMTU];
         };
+
+        using stun_packet = udp_stun_packet;
     }
 }

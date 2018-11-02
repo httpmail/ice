@@ -4,249 +4,251 @@
 #include <memory>
 
 namespace ICE {
-    boost::asio::io_service CTCPChannel::sIOService;
 
-    //////////////////////// CTCPChannel Class //////////////////////////
-    CTCPChannel::CTCPChannel() :
-        m_socket(sIOService)
+    boost::asio::io_service Channel::sIOService;
+
+    //////////////////////// UDPChannel //////////////////////////////
+    UDPChannel::UDPChannel(boost::asio::io_service& service /*= sIOService*/) :
+        m_Socket(service)
     {
     }
 
-    CTCPChannel::~CTCPChannel()
+    UDPChannel::~UDPChannel()
     {
     }
 
-    std::string CTCPChannel::IPString() const noexcept
+    bool UDPChannel::BindRemote(const std::string & ip, int16_t port) noexcept
     {
         try
         {
-            return m_socket.local_endpoint().address().to_string();
+            m_RemoteEp = boost::asio::ip::udp::endpoint(boost::asio::ip::address::from_string(ip), port);
+            return true;
         }
-        catch (const std::exception&)
+        catch (const boost::system::system_error& e)
         {
-            return "";
-        }
-    }
-
-    int CTCPChannel::Port() const noexcept
-    {
-        try
-        {
-            return m_socket.local_endpoint().port();
-        }
-        catch (std::exception&)
-        {
-            return 0;
-        }
-    }
-
-    int CTCPChannel::Protocol() const noexcept
-    {
-        try
-        {
-            return m_socket.local_endpoint().protocol().protocol();
-        }
-        catch (std::exception&)
-        {
-            return 0;
-        }
-    }
-
-    bool CTCPChannel::BindLocal(const std::string & ip, int port) noexcept
-    {
-        try
-        {
-            auto local_point = boost_tcp::endpoint(boost::asio::ip::address::from_string(ip), port);
-            m_socket.open(local_point.protocol());
-            m_socket.bind(local_point);
-        }
-        catch (std::exception& e)
-        {
-            LOG_ERROR("tcp-channel", "[%s:%d] bind error : %s", IPString().c_str(), Port(), e.what());
+            LOG_ERROR("UDPChannel", "BindRemote exception : %s", e.what());
             return false;
         }
-        return true;
     }
 
-    bool CTCPChannel::BindRemote(const std::string & remote_ip, int port) noexcept
+    bool UDPChannel::Bind(const std::string& ip, int16_t port) noexcept
     {
-        try 
+        assert(!m_Socket.is_open());
+        using namespace boost::asio::ip;
+        try
         {
-            m_socket.connect(boost_tcp::endpoint(boost::asio::ip::address::from_string(remote_ip), port));
+            udp::endpoint ep(address::from_string(ip), port);
+            return BindSocket(m_Socket, ep);
         }
-        catch (std::exception& e)
+        catch (const boost::system::system_error &e)
         {
-            LOG_ERROR("tcp-channel", "[%s:%d] connect error : %s", IPString().c_str(), Port(), e.what());
+            LOG_ERROR("UDPChannel", "Bind exception : %s", e.what());
             return false;
         }
-        return true;
     }
 
-    int16_t CTCPChannel::Write(const char* buffer, int size) noexcept
+    int16_t UDPChannel::Write(const uint8_t* buffer, int size) noexcept
     {
-        assert(m_socket.is_open() && buffer && size);
+        assert(m_Socket.is_open());
+
         try
         {
             boost::system::error_code error;
-            auto sent_bytes = boost::asio::write(m_socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
+            auto bytes = m_Socket.send_to(boost::asio::buffer(buffer, size), m_RemoteEp, 0, error);
+
+            return boost::asio::error::eof == error ? 0 : static_cast<int16_t>(bytes);
+        }
+        catch (const boost::system::system_error& e)
+        {
+            LOG_ERROR("UDPChannel", "write exception : %s", e.what());
+            return -1;
+        }
+    }
+
+    int16_t UDPChannel::Read(uint8_t* buffer, int size) noexcept
+    {
+        assert(m_Socket.is_open() && buffer && size);
+        try
+        {
+            boost::system::error_code error;
+            auto bytes = m_Socket.receive_from(boost::asio::buffer(buffer, size), m_RemoteEp, 0, error);
+
+            return boost::asio::error::eof == error ? 0 : static_cast<int16_t>(bytes);
+
+        }
+        catch (const boost::system::system_error& e)
+        {
+            LOG_ERROR("UDPChannel", "write exception : %s", e.what());
+            return -1;
+        }
+    }
+
+    //////////////////////// TCPChannel //////////////////////////////
+    TCPChannel::TCPChannel(boost::asio::io_service& service) :
+        m_Socket(service)
+    {
+    }
+
+    TCPChannel::~TCPChannel()
+    {
+    }
+
+    bool TCPChannel::Bind(const std::string& ip, int16_t port) noexcept
+    {
+        assert(!m_Socket.is_open());
+
+        using namespace boost::asio::ip;
+        try
+        {
+            tcp::endpoint ep(address::from_string(ip), port);
+            return BindSocket(m_Socket, ep);
+        }
+        catch (const boost::system::system_error &e)
+        {
+            LOG_ERROR("UDPChannel", "Bind exception : %s", e.what());
+            return false;
+        }
+    }
+
+    int16_t TCPChannel::Write(const uint8_t* buffer, int size) noexcept
+    {
+        assert(m_Socket.is_open() && buffer && size);
+        try
+        {
+            boost::system::error_code error;
+            auto bytes = boost::asio::write(m_Socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
+
+            return boost::asio::error::eof == error ? 0 : static_cast<int16_t>(bytes);
+        }
+        catch (const boost::system::system_error &e)
+        {
+            LOG_ERROR("TCPChannel", "Write exception :%s", e.what());
+            return -1;
+        }
+    }
+
+    int16_t TCPChannel::Read(uint8_t* buffer, int size) noexcept
+    {
+        assert(m_Socket.is_open() && buffer && size);
+        try
+        {
+            boost::system::error_code error;
+            int16_t length;
+            auto bytes = boost::asio::read(m_Socket, boost::asio::buffer(&length, sizeof(length)), boost::asio::transfer_all(), error);
             if (boost::asio::error::eof == error)
-            {
-                LOG_INFO("tcp-channel","send error: [%s:%d] closed", 
-                            m_socket.remote_endpoint().address().to_string().c_str(),
-                            m_socket.remote_endpoint().port());
                 return 0;
-            }
-            return sent_bytes;
+
+            // get packet length
+            *reinterpret_cast<int16_t*>(buffer) = length;
+
+            length = boost::asio::detail::socket_ops::network_to_host_short(length);
+            // read packet
+            bytes = boost::asio::read(m_Socket, boost::asio::buffer(buffer, length), boost::asio::transfer_all(), error);
+
+            return boost::asio::error::eof == error ? 0 : static_cast<int16_t>(bytes);
+
         }
-        catch (const std::exception& e)
+        catch (const boost::system::system_error &e)
         {
-            LOG_ERROR("tcp-channel", "[%s : %d] Send error : %s", IPString().c_str(), Port(), e.what());
+            LOG_ERROR("TCPChannel", "Read exception : %s", e.what());
             return -1;
         }
     }
 
-    int16_t CTCPChannel::Read(char* buffer, int size) noexcept
+    //////////////////////// TCPActiveChannel //////////////////////////////
+    TCPActiveChannel::TCPActiveChannel(boost::asio::io_service& service /*= Channel::sIOService*/) :
+        TCPChannel(service)
     {
-        assert(m_socket.is_open() && buffer && size);
+    }
+
+    TCPActiveChannel::~TCPActiveChannel()
+    {
+    }
+
+    bool TCPActiveChannel::Connect(const boost::asio::ip::tcp::endpoint& ep) noexcept
+    {
+        ep.address().to_v4();
+        assert(m_Socket.is_open());
         try
         {
-            boost::system::error_code error;
-            auto recv_bytes = boost::asio::read(m_socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
-            if (error == boost::asio::error::eof)
-            {
-                LOG_INFO("tcp-channel", "send error: [%s:%d] closed",
-                    m_socket.remote_endpoint().address().to_string().c_str(),
-                    m_socket.remote_endpoint().port());
-                return 0;
-            }
-            return recv_bytes;
+            m_Socket.connect(ep);
+            return true;
         }
-        catch (const std::exception& e)
+        catch (const boost::system::system_error &e)
         {
-            LOG_ERROR("tcp-channel", "[%s: %d] receive error : %s", IPString().c_str(), Port(), e.what());
-            return -1;
-        }
-    }
-
-    //////////////////////// CUDPChannel Class //////////////////////////
-    CUDPChannel::CUDPChannel() :
-        m_socket(sIOService)
-    {
-    }
-
-    CUDPChannel::~CUDPChannel()
-    {
-    }
-
-    std::string CUDPChannel::IPString() const noexcept
-    {
-        try
-        {
-            return m_socket.local_endpoint().address().to_string();
-        }
-        catch (const std::exception&)
-        {
-            return "";
-        }
-    }
-
-    int CUDPChannel::Port() const noexcept
-    {
-        try
-        {
-            return m_socket.local_endpoint().port();
-        }
-        catch (std::exception&)
-        {
-            return 0;
-        }
-    }
-
-    int CUDPChannel::Protocol() const noexcept
-    {
-        try
-        {
-            return m_socket.local_endpoint().protocol().protocol();
-        }
-        catch (const std::exception&)
-        {
-            return 0;
-        }
-    }
-
-    bool CUDPChannel::BindLocal(const std::string & ip, int port) noexcept
-    {
-        try
-        {
-            auto local_point = boost_udp::endpoint(boost::asio::ip::address::from_string(ip), port);
-            m_socket.open(local_point.protocol());
-            m_socket.bind(local_point);
-        }
-        catch (std::exception& e)
-        {
-            LOG_ERROR("udp-channel", "[%s:%d] bind error : %s", IPString().c_str(), Port(), e.what());
+            LOG_ERROR("TCPActive", "Connect exception :%s", e.what());
             return false;
         }
-        return true;
     }
 
-    bool CUDPChannel::BindRemote(const std::string & remote_ip, int port) noexcept
+    bool TCPActiveChannel::Connect(const std::string& ip, int16_t port) noexcept
     {
+        assert(m_Socket.is_open());
+
         try
         {
-            m_remote_endpoint = boost_udp::endpoint(boost::asio::ip::address::from_string(remote_ip), port);
+            auto ep = boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port);
+            return Connect(ep);
         }
-        catch (std::exception& e)
+        catch (const std::exception& e)
         {
-            LOG_ERROR("udp-channel", "[%s:%d] bind remote error : %s", IPString().c_str(), Port(), e.what());
+            LOG_ERROR("TCPActive", "Connect exception :%s", e.what());
             return false;
         }
-        return true;
     }
 
-    int16_t CUDPChannel::Write(const char* buffer, int size) noexcept
+    //////////////////////// TCPPassiveChannel //////////////////////////////
+    TCPPassiveChannel::TCPPassiveChannel(boost::asio::io_service& service /*= Channel::sIOService*/) :
+        TCPChannel(service), m_Acceptor(service)
     {
-        assert(m_socket.is_open() && buffer && size);
+    }
+
+    TCPPassiveChannel::~TCPPassiveChannel()
+    {
+    }
+
+    bool TCPPassiveChannel::Bind(const std::string& ip, int16_t port) noexcept
+    {
         try
         {
-            boost::system::error_code error;
-            m_socket.send_to(boost::asio::buffer(buffer, size), m_remote_endpoint);
-            if (boost::asio::error::eof == error)
-            {
-                LOG_INFO("udp-channel", "send error: [%s:%d] closed",
-                    m_socket.remote_endpoint().address().to_string().c_str(),
-                    m_socket.remote_endpoint().port());
-                return 0;
-            }
-            return size;
+            m_Acceptor.bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port));
+            m_Acceptor.listen();
+            return true;
         }
         catch (const std::exception& e)
         {
-            LOG_ERROR("udp-channel", "[%s : %d] Send error : %s", IPString().c_str(), Port(), e.what());
-            return -1;
+            LOG_ERROR("TCPPassiveChannel", "Bind exception: %s", e.what());
+            return false;
         }
     }
 
-    int16_t CUDPChannel::Read(char* buffer, int size) noexcept
+    bool TCPPassiveChannel::Accept(boost::asio::ip::tcp::socket& socket, const std::string& ip, int16_t port) noexcept
     {
-        assert(m_socket.is_open() && buffer && size);
+        assert(m_Acceptor.is_open());
+
         try
         {
-            boost::system::error_code error;
-            auto read_bytes = m_socket.receive_from(boost::asio::buffer(buffer, size), m_remote_endpoint);
-            if (error == boost::asio::error::eof)
-            {
-                LOG_INFO("udp-channel", "send error: [%s:%d] closed",
-                    m_socket.remote_endpoint().address().to_string().c_str(),
-                    m_socket.remote_endpoint().port());
-                return 0;
-            }
-            return read_bytes;
+            return Accept(socket, boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port));
         }
         catch (const std::exception& e)
         {
-            LOG_ERROR("udp-channel", "[%s: %d] receive error : %s", IPString().c_str(), Port(), e.what());
-            return -1;
+            LOG_ERROR("TCPPassiveChannel", "Accept exception: %s", e.what());
+            return false;
+        }
+    }
+
+    bool TCPPassiveChannel::Accept(boost::asio::ip::tcp::socket& socket, boost::asio::ip::tcp::endpoint &ep) noexcept
+    {
+        assert(m_Acceptor.is_open());
+        try
+        {
+            m_Acceptor.accept(socket, ep);
+            return true;
+        }
+        catch (const std::exception&e)
+        {
+            LOG_ERROR("TCPPassiveChannel", "Accept exception: %s", e.what());
+            return false;
         }
     }
 }

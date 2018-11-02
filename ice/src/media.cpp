@@ -31,7 +31,6 @@ namespace ICE {
 
         while (!pOwn->m_bQuit)
         {
-            auto size = pOwn->m_Channel->Read(0, pOwn->m_MaxPacketSize);
         }
     }
 }

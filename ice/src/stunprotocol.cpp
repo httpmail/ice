@@ -1,4 +1,5 @@
 #include "stunprotocol.h"
+#include "pg_util.h"
 
 #include <boost/asio.hpp>
 #include <assert.h>
@@ -22,8 +23,8 @@ namespace Common{
     {
         assert(buf);
 
-        *reinterpret_cast<uint16_t*>(buf[0]) = host_to_network_short(hdr.Id());
-        *reinterpret_cast<uint16_t*>(buf[2]) = host_to_network_short(hdr.Length());
+        reinterpret_cast<uint16_t*>(buf)[0] = host_to_network_short(hdr.Id());
+        reinterpret_cast<uint16_t*>(buf)[1] = host_to_network_short(hdr.Length());
         return sizeof(hdr);
     }
 
@@ -160,14 +161,36 @@ uint16_t STUN::PROTOCOL::RFC5389::EncodeAttribute(const ATTR::XorMappedAddressAt
 
     auto header_size = Common::EncodeAttrHeader(attr,buf);
 
-    buf[0 + header_size] = 0;
-    buf[1 + header_size] = attr.Family();
+    buf += header_size;
 
-    *(reinterpret_cast<uint16_t*>(buf[2 + header_size])) = host_to_network_short(attr.Port() ^ (STUN::sMagicCookie >> 16));
-    *(reinterpret_cast<uint32_t*>(buf[4 + header_size])) = host_to_network_long(attr.Address() ^ STUN::sMagicCookie);
+    buf[0] = 0;
+    buf[1] = attr.Family();
+
+    *(reinterpret_cast<uint16_t*>(buf[2])) = host_to_network_short(attr.Port() ^ (STUN::sMagicCookie >> 16));
+    *(reinterpret_cast<uint32_t*>(buf[4])) = host_to_network_long(attr.Address() ^ STUN::sMagicCookie);
 
     //TODO ipv6
     return attr.Length();
+}
+
+uint16_t STUN::PROTOCOL::RFC5389::EncodeAttribute(const ATTR::IceRoleAttr & attr, uint8_t * buf)
+{
+    auto header_size = Common::EncodeAttrHeader(attr, buf);
+
+    buf += header_size;
+
+    reinterpret_cast<uint64_t*>(buf)[0] = 0x12345;
+    return attr.Length() + header_size;
+}
+
+uint16_t STUN::PROTOCOL::RFC5389::EncodeAttribute(const ATTR::Priority &attr, uint8_t *buf)
+{
+    auto header_size = Common::EncodeAttrHeader(attr, buf);
+
+    buf += header_size;
+
+    reinterpret_cast<uint32_t*>(buf)[0] = host_to_network_long(attr._value);
+    return attr.Length() + header_size;
 }
 
 uint16_t STUN::PROTOCOL::RFC5389::Finalize(const Message& message, uint8_t * attr_buf, uint16_t length)
@@ -177,6 +200,22 @@ uint16_t STUN::PROTOCOL::RFC5389::Finalize(const Message& message, uint8_t * att
     auto len = AddMessageIntegrityAttribute(&attr_buf[length]);
     len += AddFingerprintAttribute(&attr_buf[length + len]);
     return length + len;
+}
+
+void STUN::PROTOCOL::RFC5389::GenerateTransationId(uint8_t* transBuf, int16_t size)
+{
+    assert(transBuf && size == sTransationLen);
+
+    memcpy(&transBuf[0], &sMagicCookie, sizeof(sMagicCookie));
+
+    auto value = PG::GenerateRandom32();
+    memcpy(&transBuf[4], &value, sizeof(value));
+
+    value = PG::GenerateRandom32();
+    memcpy(&transBuf[8], &value, sizeof(value));
+
+    value = PG::GenerateRandom32();
+    memcpy(&transBuf[12], &value, sizeof(value));
 }
 
 uint16_t STUN::PROTOCOL::RFC5389::AddMessageIntegrityAttribute(uint8_t * buf)

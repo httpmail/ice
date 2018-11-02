@@ -65,12 +65,14 @@ namespace ICE {
         m_Ti(sDefaultTi),
         m_Rc(sDefaultRc),
         m_cand_pairs_limits(sCandPairsLimits),
-        m_ipv4_supported(sIPv4Supported)
+        m_ipv4_supported(sIPv4Supported),
+        m_PortRange(sLowerPort, sUpperPort)
     {
         m_default_address = GetDefaultIPAddress(sIPv4Supported);
     }
 
     CAgentConfig::CAgentConfig(const CAgentConfig & config)
+        :m_PortRange(config.m_PortRange.Lower(), config.m_PortRange.Upper())
     {
         m_RTO   = config.m_RTO;
         m_Ta    = config.m_Ta;

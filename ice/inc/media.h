@@ -9,11 +9,11 @@
 #include "pg_buffer.h"
 
 namespace ICE {
+    class Channel;
 
-    class CChannel;
     class Stream {
     protected:
-        using Channel_Ptr = std::shared_ptr<CChannel>;
+        using Channel_Ptr = std::shared_ptr<Channel>;
 
     public:
         enum class MsgId : uint16_t {

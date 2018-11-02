@@ -1,61 +1,29 @@
 
-#include "pg_log.h"
-#include "pg_buffer.h"
-
-#include "channel.h"
-#include "ping.h"
-#include "stundef.h"
+#include "pg_util.h"
 #include "stunmsg.h"
+#include "channel.h"
 #include "stunprotocol.h"
 
-#include <iostream>
-#include "session.h"
-#include "agent.h"
+int main() {
+    ICE::UDPChannel channel;
 
-#include <chrono>
+    STUN::BindingRequestMsg<STUN::PACKET::udp_stun_packet, STUN::PROTOCOL::RFC5389> bingMsg(1);
 
-#include <map>
-#include <set>
-#include <unordered_set>
+    if (!channel.Bind("10.216.17.182", 32000))
+        return false;
 
+    if (!channel.BindRemote("10.216.17.216", 3478))
+        return false;
+    
+    STUN::ATTR::IceRoleAttr role(true);
+    bingMsg.AddAttribute<STUN::PROTOCOL::RFC5389>(role);
 
-class root {
-public:
-    root()
-    {
-        std::cout << "call root" << std::endl;
-        sObjects.insert(this);
-    }
+    bingMsg.Finalize();
 
-    root(const root&) = delete;
-    virtual ~root() {}
+    channel.Write(bingMsg.GetData(), bingMsg.GetLength());
 
-public:
-    static std::unordered_set<root*> sObjects;
-};
+    uint8_t buf[1024];
+    int a = channel.Read(buf, sizeof(buf));
 
-std::unordered_set<root*> root::sObjects;
-
-class child : public root{
-public:
-    child() {}
-    virtual ~child() {}
-};
-
-class child0 : public child {
-public:
-    child0() {}
-    ~child0() {}
-    child0(const child0&)
-    {
-        std::cout << "call child0" << std::endl;
-    }
-};
-int main(void)
-{
-
-    child0 _1;
-    child0 _2(_1);
-    child0 _3 = _2;
-    return 0;
+    return 1;
 }
