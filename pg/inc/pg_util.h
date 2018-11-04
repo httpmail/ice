@@ -114,11 +114,9 @@ namespace PG {
     T GenerateRandom(T min, T max)
     {
         static_assert(std::is_integral<T>::value || std::is_floating_point<T>::value, "Must Integer or Float");
-        enum {
-            is_integer = std::is_integral<T>::value,
-        };
 
-        return Generator<is_integer>::Random(min, max);
+        using is_integer = std::integral_constant<bool, std::is_integral<T>::value >;
+        return Generator<is_integer::value>::Random(min, max);
     }
 
     static uint32_t GenerateRandom32()
@@ -128,11 +126,7 @@ namespace PG {
 
     static uint64_t GenerateRandom64()
     {
-#if !defined(BOOST_NO_INT64_T) && !defined(BOOST_NO_INTEGRAL_INT64_T)
-        return sRandomGenerator64();
-#else
-        return sRandomGenerator() << 32 | sRandomGenerator();
-#endif
+        return GenerateRandom<uint64_t>(0, 0xFFFFFFFF);
     }
 
     template<class T>

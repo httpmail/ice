@@ -7,18 +7,24 @@
 int main() {
     ICE::UDPChannel channel;
 
-    STUN::BindingRequestMsg<STUN::PACKET::udp_stun_packet, STUN::PROTOCOL::RFC5389> bingMsg(1);
+    STUN::TransId s;
+    STUN::BindingRequestMsg<STUN::PACKET::UDP_HEADER, STUN::PROTOCOL::RFC5389> bingMsg(1,s);
 
     if (!channel.Bind("10.216.17.182", 32000))
         return false;
 
+
+    int a;
+    auto _1 = boost::asio::buffer(&a, sizeof(a));
+    auto _2 = boost::asio::buffer(&a, sizeof(a));
+
+    std::vector<boost::asio::mutable_buffer> v;
+    v.push_back(_1);
+    v.push_back(_2);
     if (!channel.BindRemote("10.216.17.216", 3478))
         return false;
-    
-    STUN::ATTR::IceRoleAttr role(true);
-    bingMsg.AddAttribute<STUN::PROTOCOL::RFC5389>(role);
 
-    bingMsg.Finalize();
+//    bingMsg.Finalize();
 
     channel.Write(bingMsg.GetData(), bingMsg.GetLength());
 

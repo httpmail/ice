@@ -9,200 +9,129 @@
 using namespace boost::asio::detail::socket_ops;
 
 namespace STUN {
-    template<class packet_type>
+    template<class header_type, class protocol, MTU mtu, class packet = PACKET::StunPacket<header_type, mtu> >
     class MessagePacket {
     public:
-        MessagePacket(MsgIdentifier msgId) :
-            m_attr_pos(0), m_packet_length(0), m_final_flag(false)
+        MessagePacket(MsgType msgId, const TransId& transId) :
+            m_Packet(msgId, transId), m_AttrPos(0), m_PacketLen(0), m_FinalFlag(false)
         {
+#if 0
             static_assert(!std::is_pointer<packet_type>::value && std::is_same<PACKET::udp_stun_packet, packet_type>::value
                 || std::is_same<PACKET::tcp_stun_packet, packet_type>::value,"packet_type cannot be pointer and MUST be \'udp_stun_packet\' or \'tcp_stun_packet'!");
-
-            //assert(transation && size == sTransationLen);
-
-            //memcpy(m_packet._transation, transation, size);
-            m_packet.MsgIdentifier(boost::asio::detail::socket_ops::host_to_network_short(static_cast<uint16_t>(msgId)));
+#endif
         }
 
         ~MessagePacket()
         {
         }
 
-        const uint8_t* GetData() const { return reinterpret_cast<const uint8_t*>(&m_packet); }
-        uint16_t GetLength() const { return m_packet_length + m_packet.HeaderLength();}
-
-        template<class protocol>
-        void AddAttribute(const ATTR::MappedAddressAttr &attr)
+        const uint8_t* GetData() const
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            assert(m_FinalFlag);
+            return reinterpret_cast<const uint8_t*>(&m_Packet);
         }
 
-        template<class protocol>
-        void AddAttribute(const ATTR::RespAddressAttr &attr)
+        uint16_t GetLength() const 
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            return m_PacketLen + m_Packet.HeaderLength();
         }
 
-        template<class protocol>
-        void AddAttribute(const ATTR::ChangedAddressAttr &attr)
+        void AddAttribute(const ATTR::MappedAddress &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
-        void AddAttribute(const ATTR::ReflectedFromAttr &attr)
+        void AddAttribute(const ATTR::ReflectedFrom &attr)
         {
-            auto len = STUN::protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = STUN::protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
-        void AddAttribute(const ATTR::SourceAddressAttr &attr)
+        void AddAttribute(const ATTR::ChangeRequest &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
-        void AddAttribute(const ATTR::ChangeRequestAttr &attr)
+        void AddAttribute(const ATTR::ErrorCode &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = STUN::protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
-        void AddAttribute(const ATTR::ErrorCodeAttr &attr)
-        {
-            auto len = STUN::protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
-        }
-
-        template<class protocol>
         void AddAttribute(const ATTR::UnknownAttributes &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
-        void AddAttribute(const ATTR::XorMappedAddressAttr &attr)
+        void AddAttribute(const ATTR::XorMappedAddress &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
         void AddAttribute(const ATTR::Software &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
         void AddAttribute(const ATTR::Realm &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
-        void AddAttribute(const ATTR::IceRoleAttr &attr)
+        void AddAttribute(const ATTR::Role &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_packet_length += len;
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_PacketLen += len;
+            m_AttrPos += len;
         }
 
-        template<class protocol>
         void AddAttribute(const ATTR::Nonce &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
         void AddAttribute(const ATTR::AlternateServer &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
-        template<class protocol>
         void AddAttribute(const ATTR::Priority &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_packet_length += len;
-            m_attr_pos += len;
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_PacketLen += len;
+            m_AttrPos += len;
         }
 
-        template<class protocol>
         void AddAttribute(const ATTR::UseCandidate &attr)
         {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
-        }
-
-        template<class protocol>
-        void AddAttribute(const ATTR::IceControlled &attr)
-        {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
-        }
-
-        template<class protocol>
-        void AddAttribute(const ATTR::IceControlling &attr)
-        {
-            auto len = protocol::EncodeAttribute(attr, &m_packet._attr[m_attr_pos]);
-            m_attr_pos += len;
-        }
-
-        void Finalize()
-        {
-            m_final_flag = true;
-            m_packet.PacketLength(host_to_network_short(m_packet_length));
+            auto len = protocol::Encode(attr, &m_Packet.Attributes()[m_AttrPos]);
+            m_AttrPos += len;
         }
 
     protected:
-        packet_type m_packet;
-        int16_t     m_packet_length;
-        uint16_t    m_attr_pos;
-        bool        m_final_flag;
+        packet      m_Packet;
+        int16_t     m_PacketLen;
+        uint16_t    m_AttrPos;
+        bool        m_FinalFlag;
     };
 
-    template<class packet_type, class protocol>
-    class BindingRequestMsg : public MessagePacket<packet_type> {
+    template<class header_type, class protocol, MTU mtu = MTU::IPv4>
+    class BindingRequestMsg : public MessagePacket<header_type, protocol, mtu> {
     public:
-        BindingRequestMsg(uint32_t priority) : MessagePacket(MsgIdentifier::BindingReq)
+        BindingRequestMsg(uint32_t priority, const TransId &transId)
+            : MessagePacket(MsgType::BindingRequest, transId)
         {
-            protocol::GenerateTransationId(m_packet._transation, sizeof(m_packet._transation));
-            AddAttribute<protocol>(ATTR::Priority(boost::asio::detail::socket_ops::host_to_network_long(priority)));
-        }
-
-        BindingRequestMsg(uint32_t priority, const uint8_t* transationId, int16_t size)
-            : MessagePacket(MsgIdentifier::BindingReq)
-        {
-            assert(transationId && size == sTransationLen);
-            memcpy(m_packet._transation, transationId, size);
-            AddAttribute<protocol>(ATTR::Priority(boost::asio::detail::socket_ops::host_to_network_long(priority)));
+            AddAttribute(ATTR::Priority());
         }
 
         virtual ~BindingRequestMsg() {}
-    };
-
-    template<class packet_type, class protocol>
-    class BindingRespMsg : public MessagePacket<packet_type> {
-    public:
-        BindingRespMsg() : MessagePacket(MsgIdentifier::BindingResp)  {}
-        virtual ~BindingRespMsg() {}
-    };
-
-    template<class packet_type,class protocol>
-    class BindErrRespMsg : public MessagePacket<packet_type> {
-    public:
-        BindErrRespMsg() : MessagePacket(MsgIdentifier::BindingErrResp) {}
-        virtual ~BindErrRespMsg() {}
     };
 }

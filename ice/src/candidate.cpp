@@ -128,7 +128,7 @@ namespace STUN {
         {
             auto packet = pOwn->m_RecvBuffer.WaitFreePacket();
             assert(!packet.IsNull());
-            pOwn->m_pChannel->Read(packet->Data(), packet->HeaderLength() + packet->PacketLength());
+            pOwn->m_pChannel->Read(packet->Data(), packet->Size());
         }
     }
 
@@ -222,7 +222,8 @@ namespace STUN {
 
     bool SrflxCandidate::DoGathering(const std::string& ip, int16_t port)
     {
-        BindingRequestMsg<PACKET::udp_stun_packet, PROTOCOL::RFC5389> msg(0);
+        TransId s;
+        BindingRequestMsg<PACKET::UDP_HEADER, PROTOCOL::RFC5389> msg(0, s);
 
         while (m_retransmission_cnt < m_Config.Rc())
         {

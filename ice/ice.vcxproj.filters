@@ -51,12 +51,6 @@
     <ClInclude Include="..\pg\inc\pg_msg.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
-    <ClInclude Include="..\pg\inc\pg_listener.h">
-      <Filter>pg\inc</Filter>
-    </ClInclude>
-    <ClInclude Include="..\pg\inc\pg_buffer.h">
-      <Filter>pg\inc</Filter>
-    </ClInclude>
     <ClInclude Include="inc\ping.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
@@ -74,6 +68,12 @@
     </ClInclude>
     <ClInclude Include="inc\stunprotocol.h">
       <Filter>ice\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\pg\inc\pg_buffer.h">
+      <Filter>pg\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\pg\inc\pg_listener.h">
+      <Filter>pg\inc</Filter>
     </ClInclude>
     <ClInclude Include="..\pg\inc\pg_util.h">
       <Filter>pg\inc</Filter>
@@ -111,7 +111,6 @@
     <ClCompile Include="..\pg\src\pg_object.cpp">
       <Filter>pg\src</Filter>
     </ClCompile>
-    <ClCompile Include="..\pg\inc\pg_buffer.cpp" />
     <ClCompile Include="src\ping.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
@@ -121,7 +120,13 @@
     <ClCompile Include="src\stunmsg.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
+    <ClCompile Include="..\pg\src\pg_listener.cpp">
+      <Filter>pg\src</Filter>
+    </ClCompile>
     <ClCompile Include="..\pg\src\pg_util.cpp">
+      <Filter>pg\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\pg\inc\pg_buffer.cpp">
       <Filter>pg\src</Filter>
     </ClCompile>
   </ItemGroup>

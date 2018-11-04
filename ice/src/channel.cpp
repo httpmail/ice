@@ -117,7 +117,6 @@ namespace ICE {
         {
             boost::system::error_code error;
             auto bytes = boost::asio::write(m_Socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
-
             return boost::asio::error::eof == error ? 0 : static_cast<int16_t>(bytes);
         }
         catch (const boost::system::system_error &e)
@@ -134,7 +133,7 @@ namespace ICE {
         {
             boost::system::error_code error;
             int16_t length;
-            auto bytes = boost::asio::read(m_Socket, boost::asio::buffer(&length, sizeof(length)), boost::asio::transfer_all(), error);
+            auto bytes = boost::asio::read(m_Socket, boost::asio::buffer(&length, sizeof(length)), boost::asio::transfer_at_least(sizeof(length)), error);
             if (boost::asio::error::eof == error)
                 return 0;
 

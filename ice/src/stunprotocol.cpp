@@ -8,6 +8,7 @@ using namespace STUN;
 using namespace STUN::PROTOCOL;
 using namespace boost::asio::detail::socket_ops;
 
+#if 0
 namespace Common{
     uint16_t PaddingN(uint8_t * buf, uint16_t length, uint16_t N)
     {
@@ -228,3 +229,5 @@ uint16_t STUN::PROTOCOL::RFC5389::AddFingerprintAttribute(uint8_t *buf)
 {
     return uint16_t();
 }
+
+#endif

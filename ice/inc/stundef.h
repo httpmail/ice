@@ -5,6 +5,425 @@
 #pragma warning (disable:4200)
 
 namespace STUN {
+    static const uint32_t sMagicCookie      = boost::asio::detail::socket_ops::host_to_network_long(0x2112A442);
+    static const uint16_t sIPv4PathMTU      = 548;
+    static const uint16_t sIPv6PathMTU      = 1280;
+    static const uint16_t sTransationLength = 16;
+    static const uint16_t sStunHeaderLength = 20;
+    using TransId = uint8_t[sTransationLength];
+
+    enum class AgentRole : uint8_t{
+        Controlling = 0,
+        Controlled = 1
+    };
+
+    enum class ErrorCode : uint16_t {
+        BadRequest              = 404,
+        Unauthorized            = 401,
+        UnknownAttribute        = 420,
+        StaleCredentials        = 430,
+        IntegrityCheckFailure   = 431,
+        MissingUsername         = 432,
+        UseTLS                  = 433,
+        ServerError             = 500,
+        GlobalFailure           = 600,
+    };
+
+    enum class MsgType : uint16_t {
+        BindingRequest  = 0x0001,
+        BindingResp     = 0x0101,
+        BindingErrResp  = 0x0111,
+        SSRequest       = 0x0002,
+        SSResponse      = 0x0102,
+        SSErrResp       = 0x1102,
+    };
+
+    enum class AddressFamily : uint8_t {
+        IPv4 = 0x01,
+        IPv6 = 0x02,
+    };
+
+    enum class MTU {
+        IPv4 = 548,
+        IPv6 = 1280
+    };
+
+    namespace ATTR {
+
+        /*RFC5245 15.4.*/
+        enum class  UFRAGLimit : uint16_t /* in character */ {
+            Upper = 256,
+            Lower = 4,
+        };
+
+        enum class PasswordLimit : uint16_t /* in character */ {
+            Upper = 256,
+            Lower = 22,
+        };
+
+        enum class Id {
+            MappedAddress   = 0x0001,
+            RespAddress     = 0x0002,
+            ChangeRequest   = 0x0003,
+            SourceAddress   = 0x0004,
+            ChangedAddress  = 0x0005,
+            Username        = 0x0006,
+            Password        = 0x0007,
+
+            MessageIntegrity  = 0x0008,
+            ErrorCode         = 0x0009,
+
+            UnknownAttributes = 0x000A,
+            ReflectedFrom     = 0x000B,
+
+            Realm = 0x0014,
+            Nonce = 0x0015,
+
+            XorMappedAddress = 0x0020,
+
+            Software        = 0x8022,
+            AlternateServer = 0x8023,
+            Priority        = 0x0024, /* RFC8445 16.1 */
+            UseCandidate    = 0x0025, /* RFC8445 16.1 */
+            Fingerprint     = 0x8028,
+            IceControlled   = 0x8029, /* RFC8445 16.1 */
+            IceControlling  = 0x802A, /* RFC8445 16.1 */
+        };
+
+        ////////////////////// attribute ////////////////////////////////
+        /*
+        0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        |         Type                  |            Length             |
+        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        |                             Value                             ....
+        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        */
+        class Header {
+        public:
+            explicit Header(Id type, uint16_t length) :
+                m_type(static_cast<uint16_t>(type)),m_length(length)
+            {
+            }
+
+            uint16_t Length() const 
+            {
+                return m_length;
+            }
+
+            void Length(uint16_t length)
+            {
+                m_length = length;
+            }
+
+            Id Type() const
+            {
+                return static_cast<Id>(boost::asio::detail::socket_ops::network_to_host_short(m_type));
+            }
+
+        protected:
+            uint16_t m_type;
+            uint16_t m_length;
+        };
+
+        class MappedAddress : public Header{
+        public:
+            MappedAddress(Id id = Id::MappedAddress) :
+                Header(id, 8)
+            {}
+
+            uint8_t              : 8; // reserved
+            uint8_t     m_Family : 8; // family
+            uint16_t    m_Port   : 16;// port
+            uint32_t    m_Address: 32;
+        };
+
+        class ResponseAddress : public MappedAddress {
+        public:
+            ResponseAddress() :
+                MappedAddress(Id::RespAddress)
+            {}
+        };
+
+        class ChangeRequest : public Header {
+        public:
+            ChangeRequest(bool changeIP) :
+                Header(Id::ChangeRequest, 4), m_ChangeIp(changeIP),m_ChangePort(changeIP)
+            {}
+
+            uint32_t : 29; // reserved
+            uint32_t m_ChangeIp   : 1;
+            uint32_t m_ChangePort : 1;
+            uint32_t : 1;// reserved
+        };
+
+        class SourceAddress : public MappedAddress {
+        public:
+            SourceAddress() :
+                MappedAddress(Id::SourceAddress)
+            {}
+        };
+
+        class ChangedAddress : public Header {
+        public:
+            ChangedAddress() :
+                Header(Id::ChangedAddress, 0)
+            {}
+        };
+
+        class UserName : public Header {
+        public:
+            UserName() :
+                Header(Id::Username, 0)
+            {}
+
+        private:
+            uint8_t m_Value[0]; //
+        };
+
+        class Password : public Header {
+        public:
+            Password() :
+                Header(Id::Password, 0)
+            {}
+
+        private:
+            uint8_t m_Value[0];
+        };
+
+        class MessageIntegrity : public Header {
+        public:
+            MessageIntegrity() :
+                Header(Id::MessageIntegrity, 20)
+            {}
+
+        private:
+            uint8_t m_SHA1[20];
+        };
+
+        class ErrorCode : public Header {
+        public:
+            ErrorCode() :
+                Header(Id::ErrorCode, 4)
+            {}
+
+        private:
+            uint32_t : 21; // reserved
+            uint32_t m_Class : 3; /* [3 ~ 6] */
+            uint32_t m_Number: 8; /* [0 ~ 99]*/
+            uint8_t  m_Reason[0];
+        };
+
+        class UnknownAttributes : public Header {
+        public:
+            UnknownAttributes():
+                Header(Id::UnknownAttributes,0)
+            {}
+
+        private:
+            uint16_t m_Attrs[0];
+        };
+
+        class ReflectedFrom : public MappedAddress {
+        public:
+            ReflectedFrom() :
+                MappedAddress(Id::ReflectedFrom)
+            {}
+        };
+
+        class Realm : public Header {
+        public:
+            Realm() :
+                Header(Id::Realm, 0)
+            {}
+        private:
+            uint8_t m_Text[0];
+        };
+
+        class Nonce : public Header {
+        public:
+            Nonce():
+                Header(Id::Nonce, 0)
+            {}
+
+        private:
+            uint8_t m_Text[0];
+        };
+
+        class XorMappedAddress : public MappedAddress {
+        public:
+            XorMappedAddress() :
+                MappedAddress(Id::XorMappedAddress)
+            {}
+        };
+
+        class Software : public Header {
+        public:
+            Software():
+                Header(Id::Software, 0)
+            {}
+
+        private:
+            uint8_t m_Text[0];
+        };
+
+        class AlternateServer : public MappedAddress {
+        public:
+            AlternateServer() :
+                MappedAddress(Id::AlternateServer)
+            {}
+        };
+
+        class Fingerprint : public Header {
+        public:
+            Fingerprint() :
+                Header(Id::Fingerprint, 4)
+            {}
+
+        private:
+            uint32_t m_CRC32;
+        };
+
+        class Priority : public Header {
+        public:
+            Priority() :
+                Header(Id::Priority, 4)
+            {}
+
+        private:
+            uint32_t m_Pri;
+        };
+
+        class UseCandidate : public Header {
+        public:
+            UseCandidate():
+                Header(Id::UseCandidate, 0)
+            {}
+        };
+
+        class Role : public Header {
+        public:
+            Role(bool bControlling) :
+                Header(bControlling ? Id::IceControlling : Id::IceControlled, 8)
+            {}
+        private:
+            uint64_t m_Tiebreaker;
+        };
+    }
+
+    namespace PACKET {
+        class UDP_HEADER {
+        public:
+            UDP_HEADER()
+            {}
+
+            UDP_HEADER(MsgType eType, const TransId& transId) :
+                m_MsgId(boost::asio::detail::socket_ops::host_to_network_short(static_cast<uint16_t>(eType))), m_AttrsLen(0)
+            {
+                memcpy(m_TransId, transId, sTransationLength);
+            }
+
+            MsgType Id() const 
+            {
+                return static_cast<MsgType>(boost::asio::detail::socket_ops::network_to_host_short(m_MsgId));
+            }
+
+            uint16_t HeaderLength() const
+            {
+                return sStunHeaderLength;
+            }
+
+            uint16_t AttrsLen() const
+            {
+                return m_AttrsLen;
+            }
+
+            void AttrsLen(uint16_t length)
+            {
+                m_AttrsLen = boost::asio::detail::socket_ops::host_to_network_short(length);
+            }
+
+        private:
+            uint16_t m_MsgId;
+            uint16_t m_AttrsLen;
+            uint16_t m_TransId[sTransationLength];
+        };
+
+        class TCP_HEADER {
+        public:
+            TCP_HEADER()
+            {}
+
+            TCP_HEADER(MsgType eType, const TransId& transId) :
+                m_MsgId(boost::asio::detail::socket_ops::host_to_network_short(static_cast<uint16_t>(eType))), m_AttrsLen(0)
+            {
+                memcpy(m_TransId, transId, sTransationLength);
+            }
+
+            MsgType Id() const
+            {
+                return static_cast<MsgType>(m_MsgId);
+            }
+
+            //uint16_t HeaderLength() const
+            //{
+            //    return sStunHeaderLength + 20;
+            //}
+
+            uint16_t AttrsLen() const
+            {
+                return m_AttrsLen;
+            }
+
+            void AttrsLen(uint16_t length)
+            {
+                m_AttrsLen = boost::asio::detail::socket_ops::host_to_network_short(length);
+                m_Framing  = boost::asio::detail::socket_ops::host_to_network_short(length + sStunHeaderLength);
+            }
+
+        private:
+            uint16_t m_Framing;
+            uint16_t m_MsgId;
+            uint16_t m_AttrsLen;
+            uint16_t m_TransId[sTransationLength];
+        };
+
+        template<class packet_header, MTU mtu>
+        class StunPacket : public packet_header {
+        public:
+            StunPacket()
+            {
+            }
+
+            StunPacket(MsgType eType, const TransId& transId) :
+                packet_header(eType, transId)
+            {
+            }
+        public:
+            uint8_t* Attributes()
+            {
+                return m_Attrs;
+            }
+
+            uint8_t* Data()
+            {
+                return reinterpret_cast<uint8_t*>(this);
+            }
+
+            uint16_t Size() const
+            {
+                return sizeof(*this);
+            }
+
+        private:
+            uint8_t m_Attrs[mtu];
+        };
+    }
+}
+
+#if 0
+namespace STUN {
 
     static const uint32_t sMagicCookie  = boost::asio::detail::socket_ops::host_to_network_long(0x2112A442);
     static const int sIPv4PathMTU       = 548;
@@ -315,3 +734,4 @@ namespace STUN {
         using stun_packet = udp_stun_packet;
     }
 }
+#endif
