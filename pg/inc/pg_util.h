@@ -49,64 +49,6 @@ namespace {
             return deg();
         }
     };
-
-    enum class Bits {
-        _16 = 0,
-        _32,
-        _64
-    };
-
-    template<Bits>
-    class Endian {
-    private:
-        Endian() {}
-        ~Endian(){}
-
-    public:
-        template<class T>
-        static T host_2_network()
-        {
-            return boost::asio::detail::socket_ops::host_to_network_short(T);
-        }
-
-        template<class T>
-        static T network_2_host()
-        {
-            return boost::asio::detail::socket_ops::network_to_host_short(T);
-        }
-    };
-
-    template<>
-    class Endian<Bits::_32> {
-    public:
-        template<class T>
-        static T host_2_network()
-        {
-            return boost::asio::detail::socket_ops::host_to_network_long(T);
-        }
-
-        template<class T>
-        static T network_2_host()
-        {
-            return boost::asio::detail::socket_ops::network_to_host_long(T);
-        }
-    };
-
-    template<>
-    class Endian<Bits::_64> {
-    public:
-        template<class T>
-        static T host_2_network()
-        {
-            return boost::asio::detail::socket_ops::host_to_network_long(T);
-        }
-
-        template<class T>
-        static T network_2_host()
-        {
-            return boost::asio::detail::socket_ops::network_to_host_long(T);
-        }
-    };
 }
 
 namespace PG {
@@ -132,12 +74,14 @@ namespace PG {
     template<class T>
     T host_to_network(T t)
     {
-        static_assert(std::is_unsigned<t>::value && sizeof(T) > 1, "MUST be unsigned and sizeof(T) > 1");
+        static_assert(std::is_unsigned<T>::value && sizeof(T) > 1, "MUST be unsigned and sizeof(T) > 1");
+        return t;
     }
 
     template<class T>
     T network_to_host(T t)
     {
-        static_assert(std::is_unsigned<t>::value && sizeof(T) > 1, "MUST be unsigned and sizeof(T) > 1");
+        static_assert(std::is_unsigned<T>::value && sizeof(T) > 1, "MUST be unsigned and sizeof(T) > 1");
+        return t;
     }
 }

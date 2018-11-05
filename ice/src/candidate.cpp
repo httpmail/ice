@@ -223,7 +223,7 @@ namespace STUN {
     bool SrflxCandidate::DoGathering(const std::string& ip, int16_t port)
     {
         TransId s;
-        BindingRequestMsg<PACKET::UDP_HEADER, PROTOCOL::RFC5389> msg(0, s);
+        BindingRequestMsg<PROTOCOL::RFC5389> msg(0, s);
 
         while (m_retransmission_cnt < m_Config.Rc())
         {

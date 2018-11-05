@@ -231,3 +231,9 @@ uint16_t STUN::PROTOCOL::RFC5389::AddFingerprintAttribute(uint8_t *buf)
 }
 
 #endif
+
+
+namespace STUN{
+    namespace PROTOCOL {
+    }
+}

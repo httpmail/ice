@@ -47,7 +47,7 @@ namespace ICE {
         }
     }
 
-    int16_t UDPChannel::Write(const uint8_t* buffer, int size) noexcept
+    int16_t UDPChannel::Write(const uint8_t* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open());
 
@@ -65,7 +65,7 @@ namespace ICE {
         }
     }
 
-    int16_t UDPChannel::Read(uint8_t* buffer, int size) noexcept
+    int16_t UDPChannel::Read(uint8_t* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open() && buffer && size);
         try
@@ -110,12 +110,16 @@ namespace ICE {
         }
     }
 
-    int16_t TCPChannel::Write(const uint8_t* buffer, int size) noexcept
+    int16_t TCPChannel::Write(const uint8_t* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open() && buffer && size);
         try
         {
             boost::system::error_code error;
+            uint16_t framing = boost::asio::detail::socket_ops::host_to_network_short(size);
+            auto _buf0 = boost::asio::buffer(&framing, sizeof(framing));
+            auto _buf1 = boost::asio::buffer(buffer, size);
+            std::vector<boost::asio::const_buffer> v = { _buf0,_buf1 };
             auto bytes = boost::asio::write(m_Socket, boost::asio::buffer(buffer, size), boost::asio::transfer_all(), error);
             return boost::asio::error::eof == error ? 0 : static_cast<int16_t>(bytes);
         }
@@ -126,7 +130,7 @@ namespace ICE {
         }
     }
 
-    int16_t TCPChannel::Read(uint8_t* buffer, int size) noexcept
+    int16_t TCPChannel::Read(uint8_t* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open() && buffer && size);
         try
