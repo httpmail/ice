@@ -20,6 +20,9 @@ namespace ICE {
 
 namespace STUN {
     class Candidate {
+    protected:
+        static const int16_t sMaxPacketSize = 128;
+
     public:
         enum class OP {
             gathering,
@@ -91,17 +94,14 @@ namespace STUN {
 
         }
 
-        virtual void OnStunMsg() = 0;
+        virtual void OnStunMsg()  = 0;
         virtual bool DoGathering(const std::string& ip, int16_t port) = 0;
-        virtual bool DoChecking()  = 0;
-
-    protected:
-        static const int16_t sMaxPacketSize = 128;
+        virtual bool DoChecking() = 0;
 
     protected:
         ICE::Channel            *m_pChannel;
         int16_t                  m_retransmission_cnt;
-        PG::PacketBuffer<PACKET::StunPacket<MTU::IPv4>, sMaxPacketSize> m_RecvBuffer;
+        PG::PacketBuffer<PACKET::StunPacket, sMaxPacketSize> m_RecvBuffer;
 
         const ICE::CAgentConfig &m_Config;
         static uint64_t         sRoleAttrContent; /* */
@@ -137,7 +137,7 @@ namespace STUN {
 
     class HostCandidate : public Candidate{
     public:
-        HostCandidate(const ICE::CAgentConfig& config);
+        using Candidate::Candidate;
         virtual ~HostCandidate();
 
     protected:

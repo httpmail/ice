@@ -1,52 +1,74 @@
 
-
-//#include <boost/asio.hpp>
-
 #include <stdint.h>
-#include <boost/asio.hpp>
+#include <iostream>
+#include "stundef.h"
+#include "channel.h"
+#include "stunmsg.h"
 
-class Abc {
+template<class T>
+class root {
 public:
-    union
+    static void AddAttribute()
     {
-        struct {
-            uint8_t     m_Number : 8;
-            uint8_t     m_Class : 8;
-            uint32_t : 8;
-            uint32_t : 8;
-        }details;
-
-        uint32_t value;
-    };
+        T::Add();
+    }
 };
 
+class child : public root<child> {
+public:
+    static void Add()
+    {
+    }
+};
 
-struct  Test
+using Array = uint8_t[10];
+
+struct A {
+public:
+    Array m_x;
+};
+
+struct ABCX : public A{
+public:
+};
+
+struct Testing {
+    int a;
+    int b;
+    int c;
+};
+
+const Testing* Get()
 {
-    uint8_t m_Number : 8;
-    uint8_t m_Class : 3;
-    uint32_t : 5;
-    uint32_t : 8;
-    uint32_t : 8;
-};
+    static int abc[12];
+    return (Testing*)(abc);
+}
 
-struct Header {
-    uint16_t type : 16;
-    uint16_t length : 16;
-};
-int main() {
-    Abc a;
- 
-    a.value = 0;
-    a.details.m_Class = 4;
-    a.details.m_Number = 1;
+int main() 
+{
 
-    uint8_t x[100] = { 0x01,0x11,0x00,0x2c };
+    child c;
+    c.AddAttribute();
 
-    Header header = reinterpret_cast<Header*>(x)[0];
+    ICE::UDPChannel channel;
 
-    header.type = boost::asio::detail::socket_ops::network_to_host_short(header.type);
-    header.length = boost::asio::detail::socket_ops::network_to_host_short(header.length);
+    channel.Bind("192.168.110.229", 32000);
+    channel.BindRemote("216.93.246.18", 3478);
 
+    STUN::TransId s;
+
+    uint32_t magic = boost::asio::detail::socket_ops::host_to_network_long(STUN::sMagicCookie);
+    memcpy(s, &magic, sizeof(magic));
+    STUN::BindingRequestMsg msg(0, s);
+
+    channel.Write(msg.GetData(), msg.GetLength());
+
+    uint8_t info[1024];
+
+    STUN::PACKET::StunPacket packet;
+    channel.Read(packet.Data(),sizeof(packet));
+
+    auto a = Get();
+    delete a;
     return 1;
 }

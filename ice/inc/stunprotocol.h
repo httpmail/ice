@@ -163,6 +163,12 @@ namespace STUN{
                 return attr.Length() + header_size;
             }
 
+            static void GenerateTransationId(STUN::TransId id)
+            {
+                for (int i = 0; i < sizeof(id) / sizeof(id[0]); ++i)
+                    id[0] = PG::GenerateRandom<uint8_t>(0, 0xFF);
+            }
+
         protected:
             static uint16_t EncodeHeader(const ATTR::Header& header, uint8_t* buf)
             {
@@ -196,6 +202,14 @@ namespace STUN{
             static uint16_t Encode(const ATTR::UseCandidate& attr, uint8_t* buf)
             {
                 return STUN_PROTOCOL::Encode(attr, buf);
+            }
+
+            static void GenerateTransationId(STUN::TransId id)
+            {
+                memcpy(id, &STUN::sMagicCookie, sizeof(sMagicCookie));
+
+                for (uint16_t i = 4; i < STUN::sTransationLength; ++i)
+                    id[i] = PG::GenerateRandom<uint8_t>(0, 0xFF);
             }
         };
     }

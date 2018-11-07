@@ -148,11 +148,6 @@ namespace STUN {
     }
 
     /////////////////////////// HostCandidate class ////////////////////////////////////
-    HostCandidate::HostCandidate(const ICE::CAgentConfig& config) :
-        Candidate(config)
-    {
-    }
-
     HostCandidate::~HostCandidate()
     {
     }
@@ -223,7 +218,7 @@ namespace STUN {
     bool SrflxCandidate::DoGathering(const std::string& ip, int16_t port)
     {
         TransId s;
-        BindingRequestMsg<PROTOCOL::RFC5389> msg(0, s);
+        BindingRequestMsg msg(0, s);
 
         while (m_retransmission_cnt < m_Config.Rc())
         {
@@ -250,11 +245,23 @@ namespace STUN {
                !!!!!!! NOTICE !!!!!!!
                Here RTO simply considered as 500ms
             */
-            auto ret = m_RecvBuffer.WaitForReadyPacket(std::chrono::milliseconds(m_Config.RTO() * (1 + m_retransmission_cnt*2)), [this] {
+            auto ret = m_RecvBuffer.WaitForReadyPacket(std::chrono::milliseconds(m_Config.RTO() * (1 + m_retransmission_cnt*2)), [this,&msg] {
                 auto packet = this->m_RecvBuffer.GetReadyPacket();
                 if (!packet.IsNull())
                 {
                     //TODO compare transation ID
+                    if (!msg.IsTransIdEqual(packet->GetTransId()))
+                        return false;
+
+                    switch (packet->Type())
+                    {
+                    case MsgType::BindingResp:
+                        return true;
+
+                    case MsgType::BindingErrResp:
+                        return false;
+                    }
+
                     return true;
                 }
                 else

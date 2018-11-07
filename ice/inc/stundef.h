@@ -6,41 +6,50 @@
 #include "pg_util.h"
 
 #pragma warning (disable:4200)
+#pragma pack(4)
+
+using namespace boost::asio::detail::socket_ops;
 
 namespace STUN {
-    static const uint32_t sMagicCookie      = 0x2112A442;
-    static const uint16_t sIPv4PathMTU      = 548;
-    static const uint16_t sIPv6PathMTU      = 1280;
+    static const uint32_t sMagicCookie = 0x2112A442;
+    static const uint16_t sIPv4PathMTU = 548;
+    static const uint16_t sIPv6PathMTU = 1280;
     static const uint16_t sTransationLength = 16;
     static const uint16_t sStunHeaderLength = 20;
-    using TransId           = uint8_t[sTransationLength];
-    using TransIdRef        = uint8_t(*)[sTransationLength];
-    using TransIdConstRef   = const uint8_t(*)[sTransationLength];
+    static const uint16_t sStunPacketLength = sIPv4PathMTU; /* NOTICE just set stun packet length as the MTU of ipv4*/
 
-    enum class AgentRole : uint8_t{
+    using TransId = uint8_t[sTransationLength];
+    using TransIdRef = uint8_t(*)[sTransationLength];
+    using TransIdConstRef = const uint8_t(*)[sTransationLength];
+
+    using Attrbutes         = uint8_t[sStunPacketLength];
+    using AttrbutesRef      = uint8_t(*)[sStunPacketLength];
+    using AttrbutesConstRef = const uint8_t(*)[sStunPacketLength];
+
+    enum class AgentRole : uint8_t {
         Controlling = 0,
         Controlled = 1
     };
 
     enum class ErrorCode : uint16_t {
-        BadRequest              = 404,
-        Unauthorized            = 401,
-        UnknownAttribute        = 420,
-        StaleCredentials        = 430,
-        IntegrityCheckFailure   = 431,
-        MissingUsername         = 432,
-        UseTLS                  = 433,
-        ServerError             = 500,
-        GlobalFailure           = 600,
+        BadRequest = 404,
+        Unauthorized = 401,
+        UnknownAttribute = 420,
+        StaleCredentials = 430,
+        IntegrityCheckFailure = 431,
+        MissingUsername = 432,
+        UseTLS = 433,
+        ServerError = 500,
+        GlobalFailure = 600,
     };
 
     enum class MsgType : uint16_t {
-        BindingRequest  = 0x0001,
-        BindingResp     = 0x0101,
-        BindingErrResp  = 0x0111,
-        SSRequest       = 0x0002,
-        SSResponse      = 0x0102,
-        SSErrResp       = 0x1102,
+        BindingRequest = 0x0001,
+        BindingResp = 0x0101,
+        BindingErrResp = 0x0111,
+        SSRequest = 0x0002,
+        SSResponse = 0x0102,
+        SSErrResp = 0x1102,
     };
 
     enum class AddressFamily : uint8_t {
@@ -67,32 +76,32 @@ namespace STUN {
         };
 
         enum class Id {
-            MappedAddress   = 0x0001,
-            RespAddress     = 0x0002,
-            ChangeRequest   = 0x0003,
-            SourceAddress   = 0x0004,
-            ChangedAddress  = 0x0005,
-            Username        = 0x0006,
-            Password        = 0x0007,
+            MappedAddress = 0x0001,
+            RespAddress = 0x0002,
+            ChangeRequest = 0x0003,
+            SourceAddress = 0x0004,
+            ChangedAddress = 0x0005,
+            Username = 0x0006,
+            Password = 0x0007,
 
-            MessageIntegrity  = 0x0008,
-            ErrorCode         = 0x0009,
+            MessageIntegrity = 0x0008,
+            ErrorCode = 0x0009,
 
             UnknownAttributes = 0x000A,
-            ReflectedFrom     = 0x000B,
+            ReflectedFrom = 0x000B,
 
             Realm = 0x0014,
             Nonce = 0x0015,
 
             XorMappedAddress = 0x0020,
 
-            Software        = 0x8022,
+            Software = 0x8022,
             AlternateServer = 0x8023,
-            Priority        = 0x0024, /* RFC8445 16.1 */
-            UseCandidate    = 0x0025, /* RFC8445 16.1 */
-            Fingerprint     = 0x8028,
-            IceControlled   = 0x8029, /* RFC8445 16.1 */
-            IceControlling  = 0x802A, /* RFC8445 16.1 */
+            Priority = 0x0024, /* RFC8445 16.1 */
+            UseCandidate = 0x0025, /* RFC8445 16.1 */
+            Fingerprint = 0x8028,
+            IceControlled = 0x8029, /* RFC8445 16.1 */
+            IceControlling = 0x802A, /* RFC8445 16.1 */
         };
 
         ////////////////////// attribute ////////////////////////////////
@@ -108,11 +117,11 @@ namespace STUN {
         class Header {
         public:
             explicit Header(Id type, uint16_t length) :
-                m_type(static_cast<uint16_t>(type)),m_length(length)
+                m_type(host_to_network_short(static_cast<uint16_t>(type))), m_length(host_to_network_short(length))
             {
             }
 
-            uint16_t Length() const 
+            uint16_t Length() const
             {
                 return m_length;
             }
@@ -142,13 +151,7 @@ namespace STUN {
         |                                                               |
         +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
         */
-        class MappedAddress : public Header{
-        private:
-            uint32_t m_Address : 32;
-            uint32_t m_Port    : 16;
-            uint8_t m_Family   : 8;
-            uint8_t : 8;
-
+        class MappedAddress : public Header {
         public:
             MappedAddress(Id id = Id::MappedAddress) :
                 Header(id, 8)
@@ -178,6 +181,11 @@ namespace STUN {
             {
                 return  static_cast<AddressFamily>(m_Family);
             }
+        private:
+            uint8_t : 8; // reserved
+                      uint8_t   m_Family : 8; // family
+                      uint16_t  m_Port : 16;// port
+                      uint32_t  m_Address : 32;
         };
 
         class ResponseAddress : public MappedAddress {
@@ -211,9 +219,9 @@ namespace STUN {
         class ChangeRequest : public Header {
         private:
             uint8_t : 1;
-            uint8_t m_ChangePort : 1;
-            uint8_t m_ChangeIP   : 1;
-            uint32_t : 29;
+                      uint8_t m_ChangePort : 1;
+                      uint8_t m_ChangeIP : 1;
+                      uint32_t : 29;
 
         public:
             ChangeRequest(bool changeIP) :
@@ -280,7 +288,7 @@ namespace STUN {
             {
                 struct {
                     uint32_t m_Number : 8; /* [0 ~ 99]*/
-                    uint32_t m_Class : 3; /* [3 ~ 6] */
+                    uint32_t m_Class : 3;  /* [3 ~ 6] */
                     uint32_t : 21;
                 }details;
                 uint32_t content;
@@ -289,7 +297,7 @@ namespace STUN {
 
         public:
             ErrorCode() :
-                Header(Id::ErrorCode, 4),content(0)
+                Header(Id::ErrorCode, 4), content(0)
             {}
 
             uint32_t Value() const
@@ -322,8 +330,8 @@ namespace STUN {
 
         class UnknownAttributes : public Header {
         public:
-            UnknownAttributes():
-                Header(Id::UnknownAttributes,0)
+            UnknownAttributes() :
+                Header(Id::UnknownAttributes, 0)
             {}
 
         private:
@@ -348,7 +356,7 @@ namespace STUN {
 
         class Nonce : public Header {
         public:
-            Nonce():
+            Nonce() :
                 Header(Id::Nonce, 0)
             {}
 
@@ -388,14 +396,14 @@ namespace STUN {
             }
 
             uint8_t : 8; // reserved
-            uint8_t     m_Family : 8; // family
-            uint16_t    m_Port : 16;// port
-            uint32_t    m_Address : 32;
+                      uint8_t     m_Family : 8; // family
+                      uint16_t    m_Port : 16;// port
+                      uint32_t    m_Address : 32;
         };
 
         class Software : public Header {
         public:
-            Software():
+            Software() :
                 Header(Id::Software, 0)
             {}
 
@@ -430,6 +438,10 @@ namespace STUN {
             {
                 return m_Pri;
             }
+            void Pri(uint32_t pri)
+            {
+                m_Pri = pri;
+            }
 
         private:
             uint32_t m_Pri;
@@ -437,7 +449,7 @@ namespace STUN {
 
         class UseCandidate : public Header {
         public:
-            UseCandidate():
+            UseCandidate() :
                 Header(Id::UseCandidate, 0)
             {}
         };
@@ -453,11 +465,24 @@ namespace STUN {
                 return m_Tiebreaker;
             }
 
+            void TieBreaker(uint64_t tieBreaker)
+            {
+                m_Tiebreaker = tieBreaker;
+            }
+
         private:
             uint64_t m_Tiebreaker;
         };
     }
 
+    namespace PACKET1 {
+        struct stun_packet {
+            uint16_t _msgId;
+            uint16_t _length;
+            TransId  _transId;
+            
+        };
+    }
     namespace PACKET {
         class StunHeader {
         public:
@@ -471,9 +496,9 @@ namespace STUN {
                 memcpy(m_TransId, transId, sTransationLength);
             }
 
-            MsgType Id() const 
+            MsgType Type() const 
             {
-                return static_cast<MsgType>(boost::asio::detail::socket_ops::network_to_host_short(m_MsgId));
+                return static_cast<MsgType>(m_MsgId);
             }
 
             uint16_t HeaderLength() const
@@ -488,7 +513,7 @@ namespace STUN {
 
             void AttrsLen(uint16_t length)
             {
-                m_AttrsLen = boost::asio::detail::socket_ops::host_to_network_short(length);
+                m_AttrsLen = length;
             }
 
             auto GetTransId() const -> TransIdConstRef
@@ -501,13 +526,13 @@ namespace STUN {
                 return &m_TransId;
             }
 
+
         private:
             uint16_t m_MsgId;
             uint16_t m_AttrsLen;
             TransId  m_TransId;
         };
 
-        template<MTU mtu>
         class StunPacket : public StunHeader {
         public:
             StunPacket()
@@ -539,7 +564,7 @@ namespace STUN {
                 return sizeof(*this);
             }
         private:
-            uint8_t m_Attrs[mtu];
+            uint8_t m_Attrs[sStunPacketLength];
         };
     }
 }
