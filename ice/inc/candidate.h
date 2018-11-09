@@ -101,7 +101,7 @@ namespace STUN {
     protected:
         ICE::Channel            *m_pChannel;
         int16_t                  m_retransmission_cnt;
-        PG::PacketBuffer<PACKET::StunPacket, sMaxPacketSize> m_RecvBuffer;
+        PG::PacketBuffer<PACKET::stun_packet, sMaxPacketSize> m_RecvBuffer;
 
         const ICE::CAgentConfig &m_Config;
         static uint64_t         sRoleAttrContent; /* */

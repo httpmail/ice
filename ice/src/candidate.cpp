@@ -128,7 +128,7 @@ namespace STUN {
         {
             auto packet = pOwn->m_RecvBuffer.WaitFreePacket();
             assert(!packet.IsNull());
-            pOwn->m_pChannel->Read(packet->Data(), packet->Size());
+            pOwn->m_pChannel->Read(packet.Data(), packet.Size());
         }
     }
 
@@ -249,19 +249,6 @@ namespace STUN {
                 auto packet = this->m_RecvBuffer.GetReadyPacket();
                 if (!packet.IsNull())
                 {
-                    //TODO compare transation ID
-                    if (!msg.IsTransIdEqual(packet->GetTransId()))
-                        return false;
-
-                    switch (packet->Type())
-                    {
-                    case MsgType::BindingResp:
-                        return true;
-
-                    case MsgType::BindingErrResp:
-                        return false;
-                    }
-
                     return true;
                 }
                 else

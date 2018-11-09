@@ -1,74 +1,47 @@
 
 #include <stdint.h>
 #include <iostream>
-#include "stundef.h"
-#include "channel.h"
-#include "stunmsg.h"
-
-template<class T>
-class root {
-public:
-    static void AddAttribute()
-    {
-        T::Add();
-    }
-};
-
-class child : public root<child> {
-public:
-    static void Add()
-    {
-    }
-};
-
-using Array = uint8_t[10];
-
-struct A {
-public:
-    Array m_x;
-};
-
-struct ABCX : public A{
-public:
-};
-
-struct Testing {
-    int a;
-    int b;
-    int c;
-};
-
-const Testing* Get()
-{
-    static int abc[12];
-    return (Testing*)(abc);
-}
+#include <stunprotocol.h>
 
 int main() 
 {
 
-    child c;
-    c.AddAttribute();
+    STUN::TransId transId;
+    STUN::PROTOCOL::RFC5389::GenerateTransationId(transId);
 
+    int a = 0;
+    a++;
+#if 0
     ICE::UDPChannel channel;
 
-    channel.Bind("192.168.110.229", 32000);
+    channel.Bind("192.168.110.229", 12345);
     channel.BindRemote("216.93.246.18", 3478);
 
     STUN::TransId s;
 
+    int64_t s1 = 0x0012345678ABCDEF;
+
+    printf("%llx\n", s1);
+    printf("%llx\n", PG::host_to_network(s1));
+
+    uint16_t i = 0;
+    uint32_t j = 0;
+    uint64_t k = 0;
     uint32_t magic = boost::asio::detail::socket_ops::host_to_network_long(STUN::sMagicCookie);
-    memcpy(s, &magic, sizeof(magic));
+    //memcpy(s, &magic, sizeof(magic));
     STUN::BindingRequestMsg msg(0, s);
+
+    STUN::ATTR::Priority priority;
+
+    msg.AddAttribute<STUN::PROTOCOL::RFC5389>(priority);
+
+    auto aAttr = msg.GetAttributes(STUN::ATTR::Id::AlternateServer);
 
     channel.Write(msg.GetData(), msg.GetLength());
 
-    uint8_t info[1024];
 
-    STUN::PACKET::StunPacket packet;
-    channel.Read(packet.Data(),sizeof(packet));
-
-    auto a = Get();
-    delete a;
+//    STUN::PACKET::StunPacket packet;
+//    channel.Read(packet.Data(),sizeof(packet));
+#endif
     return 1;
 }

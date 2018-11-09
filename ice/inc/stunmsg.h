@@ -12,10 +12,10 @@
 using namespace boost::asio::detail::socket_ops;
 
 namespace STUN {
-    class MessagePacket : PACKET::StunPacket{
+    class MessagePacket {
     public:
-        MessagePacket(MsgType msgId, const TransId& transId) :
-            StunPacket(msgId, transId), m_AttrPos(0), m_PacketLen(0), m_FinalFlag(false)
+        MessagePacket(MsgType msgId, const TransId& transId):
+            m_StunPacket(msgId), m_AttrLength(0), m_FinalFlag(false)
         {
         }
 
@@ -25,109 +25,201 @@ namespace STUN {
 
         bool IsTransIdEqual(TransIdConstRef transId) const
         {
-            return 0 == memcmp(transId, GetTransId(), sizeof(transId));
+            return 0 == memcmp(transId, m_StunPacket.TransId(), sizeof(transId));
         }
 
         bool IsTransIdEqual(const MessagePacket& other) const
         {
-            return 0;
+            return 0 == memcmp(other.m_StunPacket.TransId(), m_StunPacket.TransId(), sizeof(m_StunPacket.TransId()));
         }
 
         const uint8_t* GetData() const
         {
-            //assert(m_FinalFlag);
-            return Data();
+            return reinterpret_cast<const uint8_t*>(&m_StunPacket);
         }
 
         uint16_t GetLength() const 
         {
-            return m_PacketLen + HeaderLength();
+            return m_AttrLength + sStunHeaderLength;
+        }
+
+        const ATTR::Header* GetAttributes(ATTR::Id id) const
+        {
+            auto itor = m_Attributes.find(id);
+            return itor == m_Attributes.end() ? nullptr : reinterpret_cast<const ATTR::Header*>(&m_StunPacket.Attributes()[itor->second]);
+        }
+
+        bool HasAttribute(ATTR::Id id) const
+        {
+            return m_Attributes.find(id) != m_Attributes.end();
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::MappedAddress &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "MappedAddress attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::ReflectedFrom &attr)
         {
-            auto len = STUN::protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "ReflectedFrom attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::ChangeRequest &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "ChangeRequest attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::ErrorCode &attr)
         {
-            auto len = STUN::protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "ErrorCode attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::UnknownAttributes &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "UnknownAttributes attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::XorMappedAddress &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "XorMappedAddress attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::Software &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "Software attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::Realm &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "Realm attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::Role &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_PacketLen += len;
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "Role attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::Nonce &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "Nonce attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::AlternateServer &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "AlternateServer attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
         void AddAttribute(const ATTR::Priority &attr)
         {
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_PacketLen += len;
-            m_AttrPos += len;
+            if (HasAttribute(attr.Type()))
+            {
+                LOG_WARNING("STUN-MSG", "Priority attributes already existed!");
+                return;
+            }
+
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
         template<class protocol>
@@ -140,20 +232,19 @@ namespace STUN {
                 return;
             }
 
-            m_Attributes[attr.Type()] = m_AttrPos;
-            auto len = protocol::Encode(attr, &Attributes()[m_AttrPos]);
-            m_AttrPos += len;
+            m_Attributes[attr.Type()] = m_AttrLength;
+            auto len = protocol::Encode(attr, (uint8_t*)&m_StunPacket.Attributes()[m_AttrLength]);
+            m_AttrLength += len;
         }
 
     protected:
         using Attributes = std::unordered_map<ATTR::Id, int16_t>; /*key = attribute id,  value = index in StunPacket::m_Attrs */
 
     protected:
-        int16_t              m_PacketLen;
-        uint16_t             m_AttrPos;
-        bool                 m_FinalFlag;
-        PACKET1::stun_packet m_StunPacket;
-        Attributes           m_Attributes;
+        uint16_t            m_AttrLength;
+        bool                m_FinalFlag;
+        PACKET::stun_packet m_StunPacket;
+        Attributes          m_Attributes;
     };
 
     class BindingRequestMsg : public MessagePacket{

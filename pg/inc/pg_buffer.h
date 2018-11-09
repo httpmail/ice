@@ -62,6 +62,16 @@ namespace PG {
                 }
             }
 
+            uint8_t* Data() const
+            {
+                return reinterpret_cast<uint8_t*>(m_packet);
+            }
+
+            uint16_t Size() const
+            {
+                return sizeof(m_packet);
+            }
+
             packet_type* operator->() { assert(m_isNull);  return m_packet; }
             const packet_type* operator->() const { assert(m_isNull); return m_packet; }
 

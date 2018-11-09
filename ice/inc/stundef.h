@@ -8,10 +8,9 @@
 #pragma warning (disable:4200)
 #pragma pack(4)
 
-using namespace boost::asio::detail::socket_ops;
-
 namespace STUN {
-    static const uint32_t sMagicCookie = 0x2112A442;
+    static const uint32_t sSHA1Size = 20;
+    static const uint32_t sMagicCookie = PG::host_to_network(0x2112A442);
     static const uint16_t sIPv4PathMTU = 548;
     static const uint16_t sIPv6PathMTU = 1280;
     static const uint16_t sTransationLength = 16;
@@ -22,9 +21,13 @@ namespace STUN {
     using TransIdRef = uint8_t(*)[sTransationLength];
     using TransIdConstRef = const uint8_t(*)[sTransationLength];
 
-    using Attrbutes         = uint8_t[sStunPacketLength];
-    using AttrbutesRef      = uint8_t(*)[sStunPacketLength];
-    using AttrbutesConstRef = const uint8_t(*)[sStunPacketLength];
+    using AttrContent           = uint8_t[sStunPacketLength];
+    using AttrContentRef        = uint8_t(*)[sStunPacketLength];
+    using AttrContentConstRef   = const uint8_t(*)[sStunPacketLength];
+
+    using SHA1 = uint8_t[sSHA1Size];
+    using SHA1Ref = uint8_t(*)[sSHA1Size];
+    using SHA1ConstRef = const uint8_t(*)[sSHA1Size];
 
     enum class AgentRole : uint8_t {
         Controlling = 0,
@@ -44,12 +47,13 @@ namespace STUN {
     };
 
     enum class MsgType : uint16_t {
-        BindingRequest = 0x0001,
-        BindingResp = 0x0101,
-        BindingErrResp = 0x0111,
-        SSRequest = 0x0002,
-        SSResponse = 0x0102,
-        SSErrResp = 0x1102,
+        InvalidMsg      = 0x0000,
+        BindingRequest  = 0x0001,
+        BindingResp     = 0x0101,
+        BindingErrResp  = 0x0111,
+        SSRequest       = 0x0002,
+        SSResponse      = 0x0102,
+        SSErrResp       = 0x1102,
     };
 
     enum class AddressFamily : uint8_t {
@@ -117,28 +121,46 @@ namespace STUN {
         class Header {
         public:
             explicit Header(Id type, uint16_t length) :
-                m_type(host_to_network_short(static_cast<uint16_t>(type))), m_length(host_to_network_short(length))
+                m_type(PG::host_to_network(static_cast<uint16_t>(type))), m_length(PG::host_to_network(length))
             {
             }
 
-            uint16_t Length() const
+            uint16_t ContentLength() const
             {
-                return m_length;
+                return PG::network_to_host(m_length);
             }
 
             void Length(uint16_t length)
             {
-                m_length = length;
+                m_length = PG::network_to_host(m_length);
             }
 
             Id Type() const
             {
-                return static_cast<Id>(m_type);
+                return static_cast<Id>(PG::network_to_host(m_type));
             }
 
         protected:
             uint16_t m_type;
             uint16_t m_length;
+        };
+
+        /* TextAttr base class
+         * Username, password,Realm,Nonce,software
+         */
+        class TextAttr : public Header {
+        public:
+            TextAttr(Id id) :
+                Header(id, 0)
+            {}
+
+            const uint8_t* Value() const
+            {
+                return m_Text;
+            }
+
+        private:
+            uint8_t m_Text[0];
         };
 
         /*
@@ -159,22 +181,22 @@ namespace STUN {
 
             int16_t Port() const
             {
-                return m_Port;
+                return PG::network_to_host(m_Port);
             }
 
             void Port(int16_t port)
             {
-                m_Port = port;
+                m_Port = PG::host_to_network(port);
             }
 
             uint32_t Address() const
             {
-                return m_Address;
+                return PG::network_to_host(m_Address);
             }
 
             void Address(uint32_t address)
             {
-                m_Address = address;
+                m_Address = PG::host_to_network(m_Address);
             }
 
             AddressFamily Family() const
@@ -183,9 +205,9 @@ namespace STUN {
             }
         private:
             uint8_t : 8; // reserved
-                      uint8_t   m_Family : 8; // family
-                      uint16_t  m_Port : 16;// port
-                      uint32_t  m_Address : 32;
+            uint8_t   m_Family : 8; // family
+            uint16_t  m_Port : 16;// port
+            uint32_t  m_Address : 32;
         };
 
         class ResponseAddress : public MappedAddress {
@@ -219,9 +241,9 @@ namespace STUN {
         class ChangeRequest : public Header {
         private:
             uint8_t : 1;
-                      uint8_t m_ChangePort : 1;
-                      uint8_t m_ChangeIP : 1;
-                      uint32_t : 29;
+            uint8_t m_ChangePort : 1;
+            uint8_t m_ChangeIP : 1;
+            uint32_t : 29;
 
         public:
             ChangeRequest(bool changeIP) :
@@ -249,6 +271,11 @@ namespace STUN {
                 Header(Id::Username, 0)
             {}
 
+            const uint8_t* Value() const
+            {
+                return m_Value;
+            }
+
         private:
             uint8_t m_Value[0]; //
         };
@@ -259,18 +286,23 @@ namespace STUN {
                 Header(Id::Password, 0)
             {}
 
+            const uint8_t* Value() const
+            {
+                return m_Value;
+            }
+
         private:
-            uint8_t m_Value[0];
+            uint8_t m_Value[0]; //
         };
 
         class MessageIntegrity : public Header {
         public:
             MessageIntegrity() :
-                Header(Id::MessageIntegrity, 20)
+                Header(Id::MessageIntegrity, sSHA1Size)
             {}
 
         private:
-            uint8_t m_SHA1[20];
+            SHA1 m_SHA1;
         };
 
         /*
@@ -396,9 +428,9 @@ namespace STUN {
             }
 
             uint8_t : 8; // reserved
-                      uint8_t     m_Family : 8; // family
-                      uint16_t    m_Port : 16;// port
-                      uint32_t    m_Address : 32;
+            uint8_t     m_Family : 8; // family
+            uint16_t    m_Port : 16;// port
+            uint32_t    m_Address : 32;
         };
 
         class Software : public Header {
@@ -436,11 +468,11 @@ namespace STUN {
 
             uint32_t Pri() const
             {
-                return m_Pri;
+                return PG::network_to_host(m_Pri);
             }
             void Pri(uint32_t pri)
             {
-                m_Pri = pri;
+                m_Pri = PG::host_to_network(pri);
             }
 
         private:
@@ -462,12 +494,12 @@ namespace STUN {
 
             uint64_t TieBreaker() const
             {
-                return m_Tiebreaker;
+                return PG::network_to_host(m_Tiebreaker);
             }
 
             void TieBreaker(uint64_t tieBreaker)
             {
-                m_Tiebreaker = tieBreaker;
+                m_Tiebreaker = PG::host_to_network(tieBreaker);
             }
 
         private:
@@ -475,96 +507,72 @@ namespace STUN {
         };
     }
 
-    namespace PACKET1 {
-        struct stun_packet {
-            uint16_t _msgId;
-            uint16_t _length;
-            TransId  _transId;
-            
-        };
-    }
     namespace PACKET {
-        class StunHeader {
+        class stun_packet {
         public:
-            StunHeader()
-            {}
-
-            StunHeader(MsgType eType, const TransId& transId) :
-                m_MsgId(boost::asio::detail::socket_ops::host_to_network_short(static_cast<uint16_t>(eType))), m_AttrsLen(0)
+            stun_packet() :
+                stun_packet(MsgType::InvalidMsg)
             {
-                static_assert(sizeof(transId) == sTransationLength, "transation id length MUST be 16");
-                memcpy(m_TransId, transId, sTransationLength);
             }
 
-            MsgType Type() const 
+            stun_packet(MsgType eMsg) :
+                _msgId(PG::host_to_network(static_cast<uint16_t>(eMsg))),
+                _length(0),
+                _transId {0},
+                _attr {0}
             {
-                return static_cast<MsgType>(m_MsgId);
             }
 
-            uint16_t HeaderLength() const
+            MsgType MsgId() const
             {
-                return sStunHeaderLength;
+                return static_cast<MsgType>(PG::network_to_host(_msgId));
             }
 
-            uint16_t AttrsLen() const
+            void MsgId(MsgType eMsg)
             {
-                return m_AttrsLen;
+                _msgId = PG::host_to_network(static_cast<uint16_t>(eMsg));
             }
 
-            void AttrsLen(uint16_t length)
+            uint16_t Length() const
             {
-                m_AttrsLen = length;
+                return PG::network_to_host(_length);
             }
 
-            auto GetTransId() const -> TransIdConstRef
+            void Length(uint16_t length)
             {
-                return &m_TransId;
+                _length = PG::host_to_network(length);
             }
 
-            auto GetTransId() ->TransIdRef
+            void TransId(TransIdConstRef id)
             {
-                return &m_TransId;
+                memcpy(_transId, id, sizeof(_transId));
             }
 
+            auto TransId() -> TransIdRef
+            {
+                return &_transId;
+            }
+
+            auto TransId() const -> TransIdConstRef
+            {
+                return &_transId;
+            }
+
+            auto Attributes() const -> AttrContentConstRef
+            {
+                return &_attr;
+            }
+
+            auto Attributes() -> AttrContentRef
+            {
+                return &_attr;
+            }
 
         private:
-            uint16_t m_MsgId;
-            uint16_t m_AttrsLen;
-            TransId  m_TransId;
-        };
-
-        class StunPacket : public StunHeader {
-        public:
-            StunPacket()
-            {
-            }
-
-            StunPacket(MsgType eType, const TransId& transId) :
-                StunHeader(eType, transId)
-            {
-            }
-        public:
-            uint8_t* Attributes()
-            {
-                return m_Attrs;
-            }
-
-            uint8_t* Data()
-            {
-                return reinterpret_cast<uint8_t*>(this);
-            }
-
-            const uint8_t* Data() const
-            {
-                return reinterpret_cast<const uint8_t*>(this);
-            }
-
-            uint16_t Size() const
-            {
-                return sizeof(*this);
-            }
-        private:
-            uint8_t m_Attrs[sStunPacketLength];
+            uint16_t            _msgId;
+            uint16_t            _length;
+            STUN::TransId       _transId;
+            STUN::AttrContent   _attr;
         };
     }
 }
