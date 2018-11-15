@@ -10,7 +10,7 @@
 
 namespace STUN {
     static const uint32_t sSHA1Size = 20;
-    static const uint32_t sMagicCookie = PG::host_to_network(0x2112A442);
+    static const uint32_t sMagicCookie = 0x2112A442;
     static const uint16_t sIPv4PathMTU = 548;
     static const uint16_t sIPv6PathMTU = 1280;
     static const uint16_t sTransationLength = 16;
@@ -18,12 +18,12 @@ namespace STUN {
     static const uint16_t sStunPacketLength = sIPv4PathMTU; /* NOTICE just set stun packet length as the MTU of ipv4*/
 
     using TransId = uint8_t[sTransationLength];
-    using TransIdRef = uint8_t(*)[sTransationLength];
-    using TransIdConstRef = const uint8_t(*)[sTransationLength];
+    using TransIdRef = uint8_t(&)[sTransationLength];
+    using TransIdConstRef = const uint8_t(&)[sTransationLength];
 
     using AttrContent           = uint8_t[sStunPacketLength];
-    using AttrContentRef        = uint8_t(*)[sStunPacketLength];
-    using AttrContentConstRef   = const uint8_t(*)[sStunPacketLength];
+    using AttrContentRef        = uint8_t(&)[sStunPacketLength];
+    using AttrContentConstRef   = const uint8_t(&)[sStunPacketLength];
 
     using SHA1 = uint8_t[sSHA1Size];
     using SHA1Ref = uint8_t(*)[sSHA1Size];
@@ -68,6 +68,9 @@ namespace STUN {
 
     namespace ATTR {
 
+        static const uint16_t sUsernameLimite = 517;
+        static const uint16_t sTextLimite = 127;
+
         /*RFC5245 15.4.*/
         enum class  UFRAGLimit : uint16_t /* in character */ {
             Upper = 256,
@@ -97,7 +100,7 @@ namespace STUN {
             Realm = 0x0014,
             Nonce = 0x0015,
 
-            XorMappedAddress = 0x0020,
+            XorMappedAddress = 0x8020,
 
             Software = 0x8022,
             AlternateServer = 0x8023,
@@ -130,7 +133,7 @@ namespace STUN {
                 return PG::network_to_host(m_length);
             }
 
-            void Length(uint16_t length)
+            void ContentLength(uint16_t length)
             {
                 m_length = PG::network_to_host(m_length);
             }
@@ -143,24 +146,6 @@ namespace STUN {
         protected:
             uint16_t m_type;
             uint16_t m_length;
-        };
-
-        /* TextAttr base class
-         * Username, password,Realm,Nonce,software
-         */
-        class TextAttr : public Header {
-        public:
-            TextAttr(Id id) :
-                Header(id, 0)
-            {}
-
-            const uint8_t* Value() const
-            {
-                return m_Text;
-            }
-
-        private:
-            uint8_t m_Text[0];
         };
 
         /*
@@ -203,11 +188,12 @@ namespace STUN {
             {
                 return  static_cast<AddressFamily>(m_Family);
             }
+
         private:
-            uint8_t : 8; // reserved
-            uint8_t   m_Family : 8; // family
-            uint16_t  m_Port : 16;// port
-            uint32_t  m_Address : 32;
+            unsigned : 8;
+            unsigned m_Family : 8;
+            unsigned m_Port :   16;
+            unsigned m_Address : 32;
         };
 
         class ResponseAddress : public MappedAddress {
@@ -239,16 +225,19 @@ namespace STUN {
             one the Binding Request was received on.
          */
         class ChangeRequest : public Header {
-        private:
-            uint8_t : 1;
-            uint8_t m_ChangePort : 1;
-            uint8_t m_ChangeIP : 1;
-            uint32_t : 29;
-
         public:
             ChangeRequest(bool changeIP) :
                 Header(Id::ChangeRequest, 4)
             {}
+
+        private:
+            unsigned : 16;
+            unsigned : 8;
+            unsigned : 1;
+            unsigned m_ChangeIP     :1;
+            unsigned m_ChangePort   :1;
+            unsigned : 1;
+            unsigned : 4;
         };
 
         class SourceAddress : public MappedAddress {
@@ -258,10 +247,10 @@ namespace STUN {
             {}
         };
 
-        class ChangedAddress : public Header {
+        class ChangedAddress : public MappedAddress {
         public:
             ChangedAddress() :
-                Header(Id::ChangedAddress, 0)
+                MappedAddress(Id::ChangedAddress)
             {}
         };
 
@@ -271,13 +260,21 @@ namespace STUN {
                 Header(Id::Username, 0)
             {}
 
-            const uint8_t* Value() const
+            void Name(const std::string& name)
             {
-                return m_Value;
+                auto len = static_cast<uint16_t>(name.length());
+                assert(len < sUsernameLimite);
+                ContentLength(len);
+                memcpy(m_Name, name.data(), len);
             }
 
+            std::string Name() const
+            {
+                assert(ContentLength());
+                return std::string(reinterpret_cast<const char*>(m_Name), ContentLength());
+            }
         private:
-            uint8_t m_Value[0]; //
+            uint8_t m_Name[0];
         };
 
         class Password : public Header {
@@ -286,13 +283,21 @@ namespace STUN {
                 Header(Id::Password, 0)
             {}
 
-            const uint8_t* Value() const
+            void SetPassword(const std::string& name)
             {
-                return m_Value;
+                auto len = static_cast<uint16_t>(name.length());
+                assert(len < sTextLimite);
+                ContentLength(len);
+                memcpy(m_Password, name.data(), len);
             }
 
+            std::string GetPassword() const
+            {
+                assert(ContentLength());
+                return std::string(reinterpret_cast<const char*>(m_Password), ContentLength());
+            }
         private:
-            uint8_t m_Value[0]; //
+            uint8_t m_Password[0];
         };
 
         class MessageIntegrity : public Header {
@@ -315,49 +320,55 @@ namespace STUN {
         +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
          */
         class ErrorCode : public Header {
-        private:
-            union
-            {
-                struct {
-                    uint32_t m_Number : 8; /* [0 ~ 99]*/
-                    uint32_t m_Class : 3;  /* [3 ~ 6] */
-                    uint32_t : 21;
-                }details;
-                uint32_t content;
-            };
-            uint8_t  m_Reason[0];
-
         public:
             ErrorCode() :
-                Header(Id::ErrorCode, 4), content(0)
+                Header(Id::ErrorCode, 0)
             {}
-
-            uint32_t Value() const
-            {
-                return this->content;
-            }
 
             uint32_t Class() const
             {
-                return details.m_Class;
+                return m_Class;
             }
 
-            void Class(uint8_t classCode)
+            void Class(uint16_t classCode)
             {
                 assert(classCode >= 3 && classCode <= 6);
-                details.m_Class = classCode;
+
+                m_Class = classCode;
             }
 
             uint32_t Number() const
             {
-                return details.m_Number;
+                return m_Number;
             }
 
-            void Number(uint8_t number)
+            void Number(uint16_t number)
             {
                 assert(number >= 0 && number <= 99);
-                details.m_Number = number;
+                m_Number = number;
             }
+
+            void Reason(const std::string& reason)
+            {
+                auto len = static_cast<uint16_t>(reason.length());
+                assert(len < sTextLimite);
+
+                ContentLength(len + 4);
+                memcpy(m_Reason, reason.data(), len);
+            }
+
+            std::string& Reason() const
+            {
+                assert(ContentLength() - 4);
+                return std::string(reinterpret_cast<const char*>(m_Reason), ContentLength() - 4);
+            }
+
+        private:
+            unsigned int : 16;
+            unsigned int m_Class : 3;
+            unsigned int : 5;
+            unsigned int m_Number: 8;
+            uint8_t  m_Reason[0];
         };
 
         class UnknownAttributes : public Header {
@@ -380,10 +391,27 @@ namespace STUN {
         class Realm : public Header {
         public:
             Realm() :
-                Header(Id::Realm, 0)
+                Header(Id::Realm,0)
             {}
+
+            void SetRealm(const std::string& realm)
+            {
+                auto len = static_cast<uint16_t>(realm.length());
+
+                assert(len < sTextLimite);
+
+                ContentLength(len);
+                memcpy(m_Realm, realm.data(), len);
+            }
+
+            std::string& GetRealm() const
+            {
+                assert(ContentLength());
+                return std::string(reinterpret_cast<const char*>(m_Realm), ContentLength());
+            }
+
         private:
-            uint8_t m_Text[0];
+            char* m_Realm[0];
         };
 
         class Nonce : public Header {
@@ -392,8 +420,21 @@ namespace STUN {
                 Header(Id::Nonce, 0)
             {}
 
+            void SetNonce(const std::string& realm)
+            {
+                auto len = static_cast<uint16_t>(realm.length());
+
+                ContentLength(len);
+                memcpy(m_Nonce, realm.data(), len);
+            }
+
+            std::string& GetNonce() const
+            {
+                assert(ContentLength());
+                return std::string(reinterpret_cast<const char*>(m_Nonce), ContentLength());
+            }
         private:
-            uint8_t m_Text[0];
+            uint8_t m_Nonce[0];
         };
 
         class XorMappedAddress : public Header {
@@ -402,19 +443,25 @@ namespace STUN {
                 Header(Id::XorMappedAddress, 4)
             {}
 
-            int16_t Port() const
+            uint16_t Port() const
             {
-                return static_cast<int16_t>((sMagicCookie >> 16) ^ PG::network_to_host(m_Port));
+                return static_cast<uint16_t>((sMagicCookie >> 16) ^ PG::network_to_host(static_cast<uint16_t>(m_Port)));
             }
 
             void Port(int16_t port)
             {
-                m_Port = PG::host_to_network(port ^ (sMagicCookie >> 16));
+                m_Port = PG::host_to_network(static_cast<uint16_t>(port ^ (sMagicCookie >> 16)));
             }
 
             uint32_t Address() const
             {
-                return static_cast<int32_t>(sMagicCookie ^ PG::network_to_host(m_Address));
+                return static_cast<int32_t>(sMagicCookie ^ PG::network_to_host(static_cast<uint32_t>(m_Address)));
+            }
+
+            std::string IP() const
+            {
+                boost::asio::ip::address_v4 address(Address());
+                return address.to_string();
             }
 
             void Address(uint32_t address)
@@ -427,10 +474,16 @@ namespace STUN {
                 return  static_cast<AddressFamily>(m_Family);
             }
 
-            uint8_t : 8; // reserved
-            uint8_t     m_Family : 8; // family
-            uint16_t    m_Port : 16;// port
-            uint32_t    m_Address : 32;
+            const uint8_t* RawData() const
+            {
+                return reinterpret_cast<const uint8_t*>(this);
+            }
+
+        private:
+            unsigned :8;
+            unsigned m_Family : 8;
+            unsigned m_Port   : 16;
+            unsigned m_Address: 32;
         };
 
         class Software : public Header {
@@ -439,8 +492,20 @@ namespace STUN {
                 Header(Id::Software, 0)
             {}
 
+            void Describe(const std::string& desc)
+            {
+                auto len = static_cast<uint16_t>(desc.length());
+                ContentLength(len);
+                memcpy(m_describe, desc.data(), len);
+            }
+
+            std::string Describe() const
+            {
+                assert(ContentLength());
+                return std::string(reinterpret_cast<const char*>(m_describe), ContentLength());
+            }
         private:
-            uint8_t m_Text[0];
+            uint8_t m_describe[0];
         };
 
         class AlternateServer : public MappedAddress {
@@ -474,7 +539,6 @@ namespace STUN {
             {
                 m_Pri = PG::host_to_network(pri);
             }
-
         private:
             uint32_t m_Pri;
         };
@@ -505,6 +569,7 @@ namespace STUN {
         private:
             uint64_t m_Tiebreaker;
         };
+
     }
 
     namespace PACKET {
@@ -517,10 +582,24 @@ namespace STUN {
 
             stun_packet(MsgType eMsg) :
                 _msgId(PG::host_to_network(static_cast<uint16_t>(eMsg))),
-                _length(0),
-                _transId {0},
-                _attr {0}
+                _length(0)
             {
+            }
+
+            stun_packet(MsgType eMsg, TransIdConstRef id) :
+                _msgId(PG::host_to_network(static_cast<uint16_t>(eMsg))),
+                _length(0)
+            {
+                static_assert(sizeof(id) == sTransationLength, "Id Must be 16 bytes");
+                memcpy(_transId, id,sizeof(id));
+            }
+
+            stun_packet& operator=(const stun_packet& other)
+            {
+                assert(other.MsgId() != MsgType::InvalidMsg);
+
+                if(&other != this)
+                    memcpy(this, &other, other.Length() + 20);
             }
 
             MsgType MsgId() const
@@ -550,22 +629,22 @@ namespace STUN {
 
             auto TransId() -> TransIdRef
             {
-                return &_transId;
+                return _transId;
             }
 
             auto TransId() const -> TransIdConstRef
             {
-                return &_transId;
+                return _transId;
             }
 
             auto Attributes() const -> AttrContentConstRef
             {
-                return &_attr;
+                return _attr;
             }
 
             auto Attributes() -> AttrContentRef
             {
-                return &_attr;
+                return _attr;
             }
 
         private:

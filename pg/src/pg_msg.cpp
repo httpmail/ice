@@ -5,7 +5,6 @@
 #include <assert.h>
 #include <memory>
 
-#if 0
 namespace PG {
 
     MsgEntity::MsgEntityContainer MsgEntity::m_msg_entities;
@@ -13,7 +12,7 @@ namespace PG {
     MsgEntity::MsgEntity()
     {
         assert(m_msg_entities.find(this) != m_msg_entities.end());
-        m_msg_entities.insert(this)
+        m_msg_entities.insert(this);
         m_thread = std::thread(MsgDispitcherThread, this);
     }
 
@@ -34,76 +33,30 @@ namespace PG {
         }
     }
 
-    bool MsgEntity::SendMessage(const std::string & receiver, MSG_ID msgId, WPARAM wParam, LPARAM lParam)
+    bool MsgEntity::SendMessage(MSG_ID msgId, WPARAM wParam, LPARAM lParam)
     {
-        auto itor = m_msg_entities.find(receiver);
-        if (itor == m_msg_entities.end())
-        {
-            LOG_ERROR("MSG", "SendMessage :[target %s] unregistered", receiver.c_str());
-            return false;
-        }
-
-        assert(itor->second);
-
-        itor->second->OnMsgReceived(msgId, wParam, lParam);
+        OnMsgReceived(msgId, wParam, lParam);
         return true;
     }
 
-    bool MsgEntity::PostMessage(const std::string & receiver, MSG_ID msgId, WPARAM wParam, LPARAM lParam)
+    bool MsgEntity::PostMessage(MSG_ID msgId, WPARAM wParam, LPARAM lParam)
     {
-        auto itor = m_msg_entities.find(receiver);
-        if (itor == m_msg_entities.end())
-        {
-            LOG_ERROR("MSG", "SendMessage :[target %s] unregistered", receiver.c_str());
-            return false;
-        }
-
-        auto pEntity = itor->second;
-
-        assert(pEntity);
-
-        std::lock_guard<std::mutex> locker(pEntity->m_queue_mutex);
+        std::lock_guard<std::mutex> locker(m_queue_mutex);
         CMsgWrapper msg(msgId, wParam, lParam);
-        pEntity->m_msg_queue.push_back(msg);
-        pEntity->m_queue_condition.notify_one();
-
+        m_msg_queue.push_back(msg);
+        m_queue_condition.notify_one();
         return true;
     }
 
-    bool MsgEntity::RegisterEventListener(const std::string & msg_entity, MSG_ID msgId, CListener * listener)
+    bool MsgEntity::RegisterEventListener(MSG_ID msgId, CListener * listener)
     {
-        assert(listener);
-
-        auto itor = m_msg_entities.find(msg_entity);
-        if (itor == m_msg_entities.end())
-        {
-            LOG_ERROR("MSG", "RegisterEventListener :[target %s] unregistered", msg_entity.c_str());
-            return false;
-        }
-
-        auto pEntity = itor->second;
-
-        assert(pEntity);
-
-        return pEntity->RegisterListener(msgId, listener);
+        return RegisterListener(msgId, listener);
     }
 
-    bool MsgEntity::UnregisterEventListenner(const std::string & msg_entity, MSG_ID msgId, CListener * listener)
+    bool MsgEntity::UnregisterEventListenner(MSG_ID msgId, CListener * listener)
     {
-        assert(listener);
 
-        auto itor = m_msg_entities.find(msg_entity);
-        if (itor == m_msg_entities.end())
-        {
-            LOG_ERROR("MSG", "UnregisterEventListenner :[target %s]", msg_entity.c_str());
-            return false;
-        }
-
-        auto pEntity = itor->second;
-
-        assert(pEntity);
-
-        return pEntity->UnregisterListener(msgId, listener);
+        return UnregisterListener(msgId, listener);
     }
 
     bool MsgEntity::RegisterListener(MSG_ID msgId, CListener * listener)
@@ -112,7 +65,7 @@ namespace PG {
         auto itor = m_listeners.find(msgId);
         if (itor == m_listeners.end())
         {
-            LOG_ERROR("MSG", "RegisterListener :[target %s, msg_id %d] no such message", m_unique_name.c_str(), msgId);
+            LOG_ERROR("MSG", "RegisterListener : nonexistence Message[id :%d]", msgId);
             return false;
         }
         else
@@ -130,7 +83,7 @@ namespace PG {
         auto itor = m_listeners.find(msgId);
         if (itor == m_listeners.end())
         {
-            LOG_ERROR("MSG", "RegisterListener :[target %s, msg_id %d] no such message", m_unique_name.c_str(), msgId);
+            LOG_ERROR("MSG", "UnregisterListener : nonexistence Message[id :%d]", msgId);
             return false;
         }
         else
@@ -165,6 +118,18 @@ namespace PG {
         }
     }
 
+    void MsgEntity::NotifySubscriber(MSG_ID msgId, WPARAM wParam, LPARAM lParam)
+    {
+        auto itor = m_listeners.find(msgId);
+        if (itor != m_listeners.end())
+        {
+            for (auto subscriber : *itor->second)
+            {
+                subscriber->OnEventFired(msgId);
+            }
+        }
+    }
+
     void MsgEntity::MsgDispitcherThread(MsgEntity * pOwn)
     {
         assert(pOwn);
@@ -195,4 +160,3 @@ namespace PG {
         }
     }
 }
-#endif

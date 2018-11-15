@@ -47,7 +47,7 @@ namespace ICE {
         }
     }
 
-    int16_t UDPChannel::Write(const uint8_t* buffer, int16_t size) noexcept
+    int16_t UDPChannel::Write(const void* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open());
 
@@ -65,7 +65,7 @@ namespace ICE {
         }
     }
 
-    int16_t UDPChannel::Read(uint8_t* buffer, int16_t size) noexcept
+    int16_t UDPChannel::Read(void* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open() && buffer && size);
         try
@@ -110,7 +110,7 @@ namespace ICE {
         }
     }
 
-    int16_t TCPChannel::Write(const uint8_t* buffer, int16_t size) noexcept
+    int16_t TCPChannel::Write(const void* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open() && buffer && size);
         try
@@ -130,7 +130,7 @@ namespace ICE {
         }
     }
 
-    int16_t TCPChannel::Read(uint8_t* buffer, int16_t size) noexcept
+    int16_t TCPChannel::Read(void* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open() && buffer && size);
         try

@@ -4,17 +4,6 @@
 #include <boost/asio.hpp>
 #include <assert.h>
 
-#if 0
-    uint16_t PaddingN(uint8_t * buf, uint16_t length, uint16_t N)
-    {
-        assert((!(N &(N - 1))) && N); // n MUST be 2^n
-
-        auto padding_size = (length + N - 1) & (~(N-1));
-        if (padding_size)
-            memset(buf + length, 0, length);
-        return length + padding_size;
-    }
-#endif
 
 namespace STUN {
     namespace PROTOCOL {

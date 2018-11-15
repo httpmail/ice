@@ -2,6 +2,7 @@
 
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include <condition_variable>
 #include <vector>
 #include <string>
@@ -23,7 +24,7 @@ namespace PG {
         };
 
     public:
-        static log& Instance() { static log sLog; return sLog; }
+        static log& Instance();
         bool Initlize(const std::string& file_path = "", int cache_size = sCacheSize);
         void Output  (const char *pModule, const char *file_path, int line, const char* levelInfo, const char *pFormat, ...);
 
@@ -42,28 +43,20 @@ namespace PG {
             return m_writer_condition.wait_for(locker, _Rel_time, _Pred);
         }
 
-        template<class _Predicate>
-        void WaitWriter(_Predicate _Pred)
-        {
-            std::unique_lock<std::mutex> locker(m_writer_mutex);
-            m_writer_condition.wait(locker, _Pred);
-        }
-
     private:
         static void WriterThread(log *pInstance);
-        static void TimerThread(log *pInstance);
 
     private:
         using LogContainer = std::vector<std::string>;
 
     private:
         bool                    m_quit;
-        std::thread            *m_pThread;
-        std::thread             m_timerThread;
+        std::thread             m_writeThread;
         std::fstream            m_fileHandle;
         LogContainer            m_logs;
         std::condition_variable m_writer_condition;
         std::mutex              m_writer_mutex;
+        std::atomic_bool        m_bInited;
 
     private:
         static const int sMaxLineLength = 1024;

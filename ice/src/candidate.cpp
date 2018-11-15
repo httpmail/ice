@@ -80,6 +80,8 @@ namespace STUN {
     Candidate::Candidate(const ICE::CAgentConfig& config) :
         m_pChannel(nullptr), m_State(State::init), m_Config(config), m_retransmission_cnt(0)
     {
+        RegisterEvent(static_cast<uint16_t>(OP::gathering));
+        RegisterEvent(static_cast<uint16_t>(OP::checking));
     }
 
     bool Candidate::StartGathering()
@@ -129,6 +131,44 @@ namespace STUN {
             auto packet = pOwn->m_RecvBuffer.WaitFreePacket();
             assert(!packet.IsNull());
             pOwn->m_pChannel->Read(packet.Data(), packet.Size());
+        }
+    }
+
+    void Candidate::HandlePacketThread(Candidate * pOwn)
+    {
+        while (1)
+        {
+            auto packet = pOwn->m_RecvBuffer.WaitReadyPacket();
+
+            assert(packet.IsNull());
+            switch (packet->MsgId())
+            {
+            case MsgType::BindingRequest:
+                pOwn->OnStunMsg(BindingRequestMsg(*packet.Data()));
+                break;
+
+            case MsgType::BindingErrResp:
+                pOwn->OnStunMsg(BindingErrRespMsg(*packet.Data()));
+                break;
+
+            case MsgType::BindingResp:
+                pOwn->OnStunMsg(BindingRespMsg(*packet.Data()));
+                break;
+
+            case MsgType::SSErrResp:
+                pOwn->OnStunMsg(BindingErrRespMsg(*packet.Data()));
+                break;
+
+            case MsgType::SSRequest:
+                pOwn->OnStunMsg(SharedSecretReqMsg(*packet.Data()));
+                break;
+
+            case MsgType::SSResponse:
+                pOwn->OnStunMsg(SharedSecretRespMsg(*packet.Data()));
+                break;
+            default:
+                break;
+            }
         }
     }
 
@@ -217,9 +257,10 @@ namespace STUN {
 
     bool SrflxCandidate::DoGathering(const std::string& ip, int16_t port)
     {
-        TransId s;
-        BindingRequestMsg msg(0, s);
+        TransId id;
+        MessagePacket::GenerateRFC5389TransationId(id);
 
+        RFC53891stBindRequestMsg msg(id);
         while (m_retransmission_cnt < m_Config.Rc())
         {
             m_retransmission_cnt++;
@@ -246,15 +287,7 @@ namespace STUN {
                Here RTO simply considered as 500ms
             */
             auto ret = m_RecvBuffer.WaitForReadyPacket(std::chrono::milliseconds(m_Config.RTO() * (1 + m_retransmission_cnt*2)), [this,&msg] {
-                auto packet = this->m_RecvBuffer.GetReadyPacket();
-                if (!packet.IsNull())
-                {
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
+                return true;
             });
         }
         return false;

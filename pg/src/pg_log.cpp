@@ -7,15 +7,13 @@
 
 namespace PG {
     log::log() :
-        m_quit(false), m_pThread(nullptr)
+        m_quit(false), m_bInited(false), m_writeThread(log::WriterThread, this)
     {
+        m_logs.reserve(sCacheSize);
     }
 
     log::~log()
     {
-        if (!m_pThread)
-            return;
-
         // check if all the log has been stored in file
         {
             std::unique_lock<std::mutex> lock(m_writer_mutex);
@@ -28,38 +26,35 @@ namespace PG {
         // notify writerthread
         m_writer_condition.notify_one();
 
-        if (m_pThread->joinable())
-            m_pThread->join();
+        if (m_writeThread.joinable())
+            m_writeThread.join();
+    }
 
-        delete m_pThread;
-
-        if (m_timerThread.joinable())
-            m_timerThread.join();
+    log & log::Instance()
+    {
+        static log sInstance;
+        return sInstance;
     }
 
     bool log::Initlize(const std::string& file_path, int cache_size /* = sCacheSize */)
     {
         assert(cache_size);
-        if (m_pThread)
+        if (m_bInited)
             return true;
 
+        m_bInited = true;
+
+        std::lock_guard<std::mutex> locker(m_writer_mutex);
+
         m_logs.reserve(cache_size);
-        if (file_path.length())
-        {
-            m_fileHandle.open(file_path, std::ios::app);
-            assert(m_fileHandle.is_open());
-            m_fileHandle << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^" << std::endl;
-        }
+        m_fileHandle.open(file_path, std::ios::app);
 
-        m_pThread = new std::thread(log::WriterThread, this);
-        m_timerThread =  std::thread(log::TimerThread, this);
-
-        return true;
+        return m_fileHandle.is_open();
     }
 
     void log::Output(const char *pModule, const char *file_path, int line, const char* levelInfo, const char *pFormat, ...)
     {
-        assert(m_pThread && file_path && pFormat && levelInfo);
+        assert(file_path && pFormat && levelInfo);
 
         {
             std::lock_guard<std::mutex> lock(m_writer_mutex);
@@ -69,7 +64,7 @@ namespace PG {
         char log[sMaxLineLength];
 
         namespace boost_fs = boost::filesystem;
-        try 
+        try
         {
             boost_fs::path full_path(file_path, boost_fs::native);
             assert(boost_fs::is_regular_file(full_path) && boost_fs::exists(full_path));
@@ -100,46 +95,27 @@ namespace PG {
 
         while (1)
         {
-
-            pInstance->WaitWriter([&pInstance] {
-                { return !pInstance->m_logs.empty() || pInstance->m_quit; }
-            });
-
             std::unique_lock<std::mutex> lock(pInstance->m_writer_mutex);
+
+            pInstance->m_writer_condition.wait_for(lock, std::chrono::seconds(10), [&pInstance] {
+                return !pInstance->m_logs.empty() || pInstance->m_quit;
+            });
 
             if (pInstance->m_logs.empty() && pInstance->m_quit)
                 break;
 
-            LogContainer logs(pInstance->m_logs);
-            pInstance->m_logs.clear();
-            lock.unlock();
+            if (!pInstance->m_logs.empty())
+            {
+                LogContainer logs(pInstance->m_logs);
+                pInstance->m_logs.clear();
+                lock.unlock();
 
-            // write log to file
-            std::ostream& stream = pInstance->m_fileHandle.is_open() ? pInstance->m_fileHandle : std::cout;
-            for (auto log : logs)
-                stream << log << std::endl;
-            stream.flush();
-
-            // check if need to quit
-            lock.lock();
-            if (pInstance->m_quit)
-                break;
-        }
-    }
-
-    void log::TimerThread(log * pInstance)
-    {
-        assert(pInstance == &log::Instance());
-        while (1)
-        {
-            pInstance->WaitForWriter(std::chrono::milliseconds(1000), [&pInstance] {
-                return pInstance->m_quit;
-            });
-            pInstance->m_writer_condition.notify_one();
-
-            std::lock_guard<std::mutex> lock(pInstance->m_writer_mutex);
-            if (pInstance->m_quit)
-                break;
+                // write log to file
+                std::ostream& stream = pInstance->m_fileHandle.is_open() ? pInstance->m_fileHandle : std::cout;
+                for (auto log : logs)
+                    stream << log << std::endl;
+                stream.flush();
+            }
         }
     }
 }

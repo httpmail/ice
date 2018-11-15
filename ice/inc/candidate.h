@@ -10,6 +10,7 @@
 #include "pg_util.h"
 #include "pg_log.h"
 #include "pg_buffer.h"
+#include "pg_msg.h"
 
 namespace ICE {
     class Channel;
@@ -19,7 +20,16 @@ namespace ICE {
 }
 
 namespace STUN {
-    class Candidate {
+    class BindingRequestMsg;
+    class BindingRespMsg;
+    class BindingErrRespMsg;
+    class SharedSecretRespMsg;
+    class SharedSecretReqMsg;
+    class SharedSecretErrRespMsg;
+}
+
+namespace STUN {
+    class Candidate : public PG::MsgEntity{
     protected:
         static const int16_t sMaxPacketSize = 128;
 
@@ -94,7 +104,13 @@ namespace STUN {
 
         }
 
-        virtual void OnStunMsg()  = 0;
+        virtual void OnStunMsg(const BindingRequestMsg& reqMsg) {}
+        virtual void OnStunMsg(const BindingRespMsg& respMsg) {}
+        virtual void OnStunMsg(const BindingErrRespMsg& errRespMsg) {};
+        virtual void OnStunMsg(const SharedSecretRespMsg& ssRespMsg) {};
+        virtual void OnStunMsg(const SharedSecretReqMsg& ssReqMsg) {};
+        virtual void OnStunMsg(const SharedSecretErrRespMsg& errSSRespMsg) {};
+
         virtual bool DoGathering(const std::string& ip, int16_t port) = 0;
         virtual bool DoChecking() = 0;
 
@@ -125,6 +141,7 @@ namespace STUN {
 
     private:
         static void RecvThread(Candidate* pOwn);
+        static void HandlePacketThread(Candidate *pOwn);
         static void CheckingThread(Candidate* pOwn);
         static void GatheringThread(Candidate* pOwn);
 

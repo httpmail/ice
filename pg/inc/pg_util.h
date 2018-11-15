@@ -22,13 +22,12 @@ namespace PG {
     template<class T>
     T GenerateRandom(T min, T max)
     {
-        static_assert(std::is_integral<T>::value || std::is_floating_point<T>::value, "Must integral or Float");
+        static_assert(std::is_integral<T>::value || std::is_floating_point<T>::value, "Must be integral or Float");
 
         using dist_type = is_integer_random<std::is_integral<T>::value, T>::type;
 
         assert(min < max);
 
-        //dest_type
         dist_type degen_dist(min, max);
         boost::variate_generator<random_generator&, dist_type> deg(sRandomGenerator, degen_dist);
         return deg();
@@ -154,7 +153,7 @@ namespace PG {
     };
 
     template<class T>
-    T host_to_network(T t)
+    inline T host_to_network(T t)
     {
         static_assert(std::is_integral<T>::value, "Must be integral");
 

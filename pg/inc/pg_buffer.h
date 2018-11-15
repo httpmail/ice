@@ -38,8 +38,9 @@ namespace PG {
 
     public:
         class PacketGuard {
+        private:
             PacketGuard(packet_type* packet, PacketContainer& recycleContainer, std::mutex &mutex, std::condition_variable &cond) :
-                m_packet(packet), m_recycleCon(recycleContainer), m_mutex(mutex), m_cond(cond), m_isNull(packet == nullptr)
+                m_packet(packet), m_isNull(packet == nullptr), m_recycleCon(recycleContainer), m_mutex(mutex), m_cond(cond),m_RefCnt(1)
             {
             }
 
@@ -47,24 +48,45 @@ namespace PG {
             PacketGuard(const PacketGuard& other)
                 :PacketGuard(other.m_packet, other.m_mutex, other.m_recycleCon, other.m_cond)
             {
-                other.m_packet = nullptr;
+                other.m_RefCnt++;
+                m_RefCnt = other.m_RefCnt;
+            }
+
+            PacketGuard& operator=(const PacketGuard& other)
+            {
+                if (&other == this)
+                    return *this;
+
+                m_recycleCon = other.m_recycleCon;
+                m_mutex = other.m_mutex;
+                m_cond = other.m_cond;
+                m_isNull = other.m_isNull;
+
+                m_packet = other.m_packet;
+                other.m_RefCnt++;
+                m_RefCnt = other.m_RefCnt;
             }
 
             bool IsNull() const { return m_isNull;}
 
             ~PacketGuard()
             {
-                std::lock_guard<std::mutex> locker(m_mutex);
-                if (m_packet)
+                m_RefCnt--;
+                if (!m_RefCnt)
                 {
-                    m_recycleCon.push_back(m_packet);
-                    m_cond.notify_all();
+                    std::lock_guard<std::mutex> locker(m_mutex);
+                    if (m_packet)
+                    {
+                        m_recycleCon.push_back(m_packet);
+                        m_cond.notify_all();
+                    }
+                    m_RefCnt = 0;
                 }
             }
 
-            uint8_t* Data() const
+            packet_type* Data() const
             {
-                return reinterpret_cast<uint8_t*>(m_packet);
+                return m_packet;
             }
 
             uint16_t Size() const
@@ -76,12 +98,12 @@ namespace PG {
             const packet_type* operator->() const { assert(m_isNull); return m_packet; }
 
         private:
-            packet_type     *m_packet;
-            PacketContainer &m_recycleCon;
-            std::mutex      &m_mutex;
+            packet_type         *m_packet;
+            bool                 m_isNull;
+            std::atomic<int16_t> m_RefCnt;
+            PacketContainer     &m_recycleCon;
+            std::mutex          &m_mutex;
             std::condition_variable &m_cond;
-            bool             m_isNull;
-
             friend class PacketBuffer<packet_type, MAX_SIZE>;
         };
 

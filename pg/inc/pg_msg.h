@@ -25,10 +25,10 @@ namespace PG{
         void Close();
 
     public:
-        static bool SendMessage(const std::string& receiver, MSG_ID msgId, WPARAM wParam, LPARAM lParam);
-        static bool PostMessage(const std::string& receiver, MSG_ID msgId, WPARAM wParam, LPARAM lParam);
-        static bool RegisterEventListener(const std::string& msg_entity, MSG_ID msgId, CListener *listener);
-        static bool UnregisterEventListenner(const std::string& msg_entity, MSG_ID msgId, CListener *listener);
+        bool SendMessage(MSG_ID msgId, WPARAM wParam, LPARAM lParam);
+        bool PostMessage(MSG_ID msgId, WPARAM wParam, LPARAM lParam);
+        bool RegisterEventListener(MSG_ID msgId, CListener *listener);
+        bool UnregisterEventListenner(MSG_ID msgId, CListener *listener);
 
     private:
         class CMsgWrapper {
@@ -55,6 +55,7 @@ namespace PG{
         bool RegisterListener(MSG_ID msgId, CListener *listener);
         bool UnregisterListener(MSG_ID msgId, CListener *listener);
         bool RegisterEvent(MSG_ID msgId);
+        void NotifySubscriber(MSG_ID msgId, WPARAM wParam, LPARAM lParam);
 
     protected:
         static void MsgDispitcherThread(MsgEntity *pOwn);
