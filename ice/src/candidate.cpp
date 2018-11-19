@@ -68,6 +68,8 @@ namespace ICE {
 
 #include "pg_log.h"
 #include "pg_util.h"
+#include "pg_msg.h"
+#include "pg_listener.h"
 
 #include <assert.h>
 
@@ -80,11 +82,18 @@ namespace STUN {
     Candidate::Candidate(const ICE::CAgentConfig& config) :
         m_pChannel(nullptr), m_State(State::init), m_Config(config), m_retransmission_cnt(0)
     {
-        RegisterEvent(static_cast<uint16_t>(OP::gathering));
-        RegisterEvent(static_cast<uint16_t>(OP::checking));
+        RegisterEvent(static_cast<uint16_t>(Msg::gathering));
+        RegisterEvent(static_cast<uint16_t>(Msg::checking));
+
+        m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::BindRequest));
+        m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::BindResp));
+        m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::BindErrResp));
+        m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::SSReq));
+        m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::SSErrResp));
+        m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::SSResp));
     }
 
-    bool Candidate::StartGathering()
+    bool Candidate::StartGathering(const std::string& ip, uint16_t port)
     {
         if (!IsState(State::init))
         {
@@ -94,7 +103,7 @@ namespace STUN {
         }
 
         SetState(State::gathering);
-        m_GatheringThrd = std::thread(Candidate::GatheringThread, this);
+        m_GatheringThrd = std::thread(Candidate::GatheringThread, this, ip, port);
         return true;
     }
 
@@ -113,6 +122,21 @@ namespace STUN {
         return true;
     }
 
+    bool Candidate::Subscribe(PG::Subscriber *subscriber, InternalEvent event)
+    {
+        return m_InternalEventPub.Subscribe(subscriber, static_cast<uint16_t>(event));
+    }
+
+    bool Candidate::Unsubscribe(PG::Subscriber * subscriber)
+    {
+        return m_InternalEventPub.Unsubscribe(subscriber);
+    }
+
+    bool Candidate::Unsubscribe(PG::Subscriber * subscriber, InternalEvent event)
+    {
+        return m_InternalEventPub.Unsubscribe(subscriber, static_cast<uint16_t>(event));
+    }
+
     bool Candidate::IsState(State eState)
     {
         return eState == m_State.load(std::memory_order_relaxed);
@@ -122,6 +146,36 @@ namespace STUN {
     {
         if (!IsState(eState))
             m_State.store(eState, std::memory_order_relaxed);
+    }
+
+    void Candidate::OnStunMsg(const BindingRequestMsg & reqMsg)
+    {
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&reqMsg, nullptr);
+    }
+
+    void Candidate::OnStunMsg(const BindingRespMsg & respMsg)
+    {
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&respMsg, nullptr);
+    }
+
+    void Candidate::OnStunMsg(const BindingErrRespMsg & errRespMsg)
+    {
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&errRespMsg, nullptr);
+    }
+
+    void Candidate::OnStunMsg(const SharedSecretRespMsg & ssRespMsg)
+    {
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&ssRespMsg, nullptr);
+    }
+
+    void Candidate::OnStunMsg(const SharedSecretReqMsg & ssReqMsg)
+    {
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&ssReqMsg, nullptr);
+    }
+
+    void Candidate::OnStunMsg(const SharedSecretErrRespMsg & errSSRespMsg)
+    {
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&errSSRespMsg, nullptr);
     }
 
     void Candidate::RecvThread(Candidate* pOwn)
@@ -141,6 +195,7 @@ namespace STUN {
             auto packet = pOwn->m_RecvBuffer.WaitReadyPacket();
 
             assert(packet.IsNull());
+
             switch (packet->MsgId())
             {
             case MsgType::BindingRequest:
@@ -180,11 +235,11 @@ namespace STUN {
         //pOwn->SetState(pOwn->DoGathering() ? State::checking_succeed : State::checking_failed);
     }
 
-    void Candidate::GatheringThread(Candidate* pOwn)
+    void Candidate::GatheringThread(Candidate* pOwn, const std::string& ip, uint16_t port)
     {
         assert(pOwn && pOwn->IsState(State::gathering));
 
-        //auto ret = pOwn->DoGathering();
+        auto ret = pOwn->DoGathering(ip, port);
     }
 
     /////////////////////////// HostCandidate class ////////////////////////////////////
@@ -246,11 +301,6 @@ namespace STUN {
     }
 
     /////////////////////////// SrflxCandidate class ////////////////////////////////////
-    SrflxCandidate::SrflxCandidate(const ICE::CAgentConfig& config, const std::string& stun_server, int16_t stun_port)
-        :Candidate(config), m_StunServer(stun_server), m_StunPort(stun_port)
-    {
-    }
-
     SrflxCandidate::~SrflxCandidate()
     {
     }
@@ -260,7 +310,81 @@ namespace STUN {
         TransId id;
         MessagePacket::GenerateRFC5389TransationId(id);
 
-        RFC53891stBindRequestMsg msg(id);
+        class BindRespSubscriber : public PG::Subscriber {
+        public:
+            BindRespSubscriber(TransIdConstRef id, SrflxCandidate *pOwner) :
+                m_ReqMsg(id), m_pOwner(pOwner)
+            {
+                assert(m_pOwner);
+                m_pOwner->Subscribe(this, InternalEvent::BindErrResp);
+                m_pOwner->Subscribe(this, InternalEvent::BindResp);
+            }
+            ~BindRespSubscriber() 
+            {
+            }
+
+            void OnPublished(MsgEntity::MSG_ID msgId, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam) override
+            {
+                switch (static_cast<InternalEvent>(msgId))
+                {
+                case InternalEvent::BindResp:
+                    {
+                        BindingRespMsg *pMsg = reinterpret_cast<BindingRespMsg*>(wParam);
+                        if (pMsg->IsTransIdEqual(m_ReqMsg))
+                        {
+                            ATTR::MappedAddress *mappedAddress = nullptr;
+                            auto xOrMap = reinterpret_cast<const ATTR::XorMappedAddress*>(pMsg->GetAttributes(ATTR::Id::XorMappedAddress));
+                            if (xOrMap)
+                            {
+                                m_pOwner->m_IP = xOrMap->IP();
+                                m_pOwner->m_Port = xOrMap->Port();
+                            }
+                            else
+                            {
+                                auto mappedAddress = reinterpret_cast<const ATTR::MappedAddress*>(pMsg->GetAttributes(ATTR::Id::XorMappedAddress));
+                                if (mappedAddress)
+                                {
+                                    m_pOwner->m_IP = mappedAddress->IP();
+                                    m_pOwner->m_Port = mappedAddress->Port();
+                                }
+                            }
+                            if (!(xOrMap || mappedAddress))
+                            {
+                                LOG_ERROR("SrflxCandidate", "Bind Response Message has no XorMappedAddress or MappedAddress");
+                            }
+                            else
+                            {
+                                m_pOwner->Unsubscribe(this);
+                                m_Cond.notify_one();
+                            }
+                        }
+                    }
+                    break;
+
+                case InternalEvent::BindErrResp:
+                    {
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+
+            bool WaitForResp(uint32_t msec)
+            {
+                std::mutex mutex;
+                std::unique_lock<std::mutex> locker(mutex);
+                return std::cv_status::no_timeout == m_Cond.wait_for(locker, std::chrono::milliseconds(msec));
+            }
+
+            TransId m_TransId;
+            RFC53891stBindRequestMsg m_ReqMsg;
+            std::condition_variable  m_Cond;
+            SrflxCandidate          *m_pOwner;
+        };
+
+        BindRespSubscriber subscriber(id, this);
+
         while (m_retransmission_cnt < m_Config.Rc())
         {
             m_retransmission_cnt++;
@@ -273,7 +397,7 @@ namespace STUN {
             }
 
             // send the first bind request
-            if (-1 == channel->Write(msg.GetData(), msg.GetLength()))
+            if (-1 == channel->Write(subscriber.m_ReqMsg.GetData(), subscriber.m_ReqMsg.GetLength()))
             {
                 LOG_ERROR("SrflxCandidate", "Send BindRequestMsg Error");
                 return false;
@@ -286,9 +410,10 @@ namespace STUN {
                !!!!!!! NOTICE !!!!!!!
                Here RTO simply considered as 500ms
             */
-            auto ret = m_RecvBuffer.WaitForReadyPacket(std::chrono::milliseconds(m_Config.RTO() * (1 + m_retransmission_cnt*2)), [this,&msg] {
+            if (subscriber.WaitForResp(m_Config.RTO() * (1 + m_retransmission_cnt * 2)))
+            {
                 return true;
-            });
+            }
         }
         return false;
     }

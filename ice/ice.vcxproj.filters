@@ -78,6 +78,9 @@
     <ClInclude Include="..\pg\inc\pg_util.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
+    <ClInclude Include="inc\stream.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent.cpp">
@@ -120,14 +123,14 @@
     <ClCompile Include="src\stunmsg.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
-    <ClCompile Include="..\pg\src\pg_listener.cpp">
-      <Filter>pg\src</Filter>
-    </ClCompile>
     <ClCompile Include="..\pg\src\pg_util.cpp">
       <Filter>pg\src</Filter>
     </ClCompile>
     <ClCompile Include="..\pg\inc\pg_buffer.cpp">
       <Filter>pg\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\stream.cpp">
+      <Filter>ice\src</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

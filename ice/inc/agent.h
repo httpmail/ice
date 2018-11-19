@@ -105,6 +105,7 @@ namespace ICE {
         CAgent() {}
         virtual ~CAgent() {}
         const CAgentConfig& AgentConfig() const { return m_config; }
+
     private:
         CAgentConfig m_config;
     };

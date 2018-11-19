@@ -20,8 +20,6 @@ namespace ICE {
         Session();
         virtual ~Session();
 
-        //bool CreateMultimedia(std::string& const name);
-        //bool Create
         bool GatherCandidate(const CAgentConfig& config);
 
     private:

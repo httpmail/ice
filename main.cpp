@@ -3,28 +3,19 @@
 #include <iostream>
 #include "stunmsg.h"
 #include "channel.h"
-
-class ABC111 {
-public:
-    ABC111() 
-    {
-        std::cout << "ABC111()" << std::endl;
-    }
-
-    ~ABC111() {}
-
-    ABC111(int i) 
-    {
-        std::cout << "ABC111(int i)" << std::endl;
-    }
-};
-
-class A : public ABC111 {
-};
+#include "agent.h"
+#include "stream.h"
 
 int main() 
 {
+    ICE::CAgent agent;
 
+    ICE::Stream stream(1, ICE::Stream::Pipline::udp, "192.168.110.232");
+
+    stream.Create(agent.AgentConfig());
+
+
+#if 0
     ICE::UDPChannel channel;
 
     channel.Bind("192.168.110.229", 12345);
@@ -39,6 +30,7 @@ int main()
     channel.Read(&recv_packet, sizeof(recv_packet));
 
     auto recv = recv_packet;
-    STUN::MessagePacket p(recv_packet);
+    STUN::MessagePacket p1(recv_packet);
+#endif
     return 1;
 }

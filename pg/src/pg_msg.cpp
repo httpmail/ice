@@ -4,6 +4,8 @@
 
 #include <assert.h>
 #include <memory>
+#include <functional>
+#include <algorithm>
 
 namespace PG {
 
@@ -11,7 +13,7 @@ namespace PG {
 
     MsgEntity::MsgEntity()
     {
-        assert(m_msg_entities.find(this) != m_msg_entities.end());
+        assert(m_msg_entities.find(this) == m_msg_entities.end());
         m_msg_entities.insert(this);
         m_thread = std::thread(MsgDispitcherThread, this);
     }
@@ -118,14 +120,14 @@ namespace PG {
         }
     }
 
-    void MsgEntity::NotifySubscriber(MSG_ID msgId, WPARAM wParam, LPARAM lParam)
+    void MsgEntity::NotifyListener(MSG_ID msgId, WPARAM wParam, LPARAM lParam)
     {
         auto itor = m_listeners.find(msgId);
         if (itor != m_listeners.end())
         {
-            for (auto subscriber : *itor->second)
+            for (auto listener : *itor->second)
             {
-                subscriber->OnEventFired(msgId);
+                listener->OnEventFired(this,msgId, wParam, lParam);
             }
         }
     }
@@ -158,5 +160,92 @@ namespace PG {
                 }
             }
         }
+    }
+
+    //////////////////////////// Publisher ////////////////////////////////////
+    Publisher::~Publisher()
+    {
+        std::for_each(m_Msg.begin(), m_Msg.end(), [](auto itor) {
+            delete itor.second;
+        });
+    }
+
+    bool Publisher::Subscribe(Subscriber * subscriber, MsgEntity::MSG_ID msgId)
+    {
+        assert(subscriber);
+
+        auto itor = m_Msg.find(msgId);
+        if (itor == m_Msg.end())
+        {
+            LOG_ERROR("Publisher", "Msg Id unregistered[%d]", msgId);
+            return false;
+        }
+
+        assert(itor->second);
+
+        return itor->second->insert(subscriber).second;
+    }
+
+    bool Publisher::Unsubscribe(Subscriber * subscriber, MsgEntity::MSG_ID msgId)
+    {
+        assert(subscriber);
+
+        auto itor = m_Msg.find(msgId);
+        if (itor == m_Msg.end())
+        {
+            LOG_ERROR("Publisher", "Msg Id unregistered[%d]", msgId);
+            return false;
+        }
+
+        assert(itor->second);
+
+        itor->second->erase(subscriber);
+
+        return true;
+    }
+
+    bool Publisher::Unsubscribe(Subscriber * subscriber)
+    {
+        assert(subscriber);
+
+        std::for_each(m_Msg.begin(), m_Msg.end(), [subscriber](auto s){
+            s.second->erase(subscriber);
+        });
+
+        return true;
+    }
+    bool Publisher::RegisterMsg(MsgEntity::MSG_ID msgId)
+    {
+        if (m_Msg.end() != m_Msg.find(msgId))
+        {
+            LOG_WARNING("Publisher", "msg :[%d] already existed", msgId);
+            return true;
+        }
+
+        std::auto_ptr<SubscribersContainer> container(new SubscribersContainer);
+        if (container.get() && m_Msg.insert(std::make_pair(msgId, container.get())).second)
+        {
+            container.release();
+            return true;
+        }
+        return false;
+    }
+
+    void Publisher::Publish(MsgEntity::MSG_ID msgId, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam)
+    {
+        auto msg = m_Msg.find(msgId);
+
+        if (msg == m_Msg.end())
+        {
+            LOG_WARNING("Publisher", "Unregistered msg [%d]", msgId);
+            return;
+        }
+
+        assert(msg->second);
+
+        std::for_each(msg->second->begin(), msg->second->end(), [msgId, wParam, lParam](auto sub){
+            assert(sub);
+            sub->OnPublished(msgId, wParam, lParam);
+        });
     }
 }

@@ -179,6 +179,12 @@ namespace STUN {
                 return PG::network_to_host(m_Address);
             }
 
+            std::string IP() const
+            {
+                boost::asio::ip::address_v4 address(Address());
+                return address.to_string();
+            }
+
             void Address(uint32_t address)
             {
                 m_Address = PG::host_to_network(m_Address);

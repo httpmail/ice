@@ -9,6 +9,7 @@
 
 namespace PG{
     class CListener;
+    class Subscriber;
 
     class MsgEntity {
     public:
@@ -50,12 +51,12 @@ namespace PG{
         };
 
     protected:
-        virtual void OnMsgReceived(MSG_ID msgId, WPARAM wParam, LPARAM lParam) = 0 {};
+        virtual void OnMsgReceived(MSG_ID msgId, WPARAM wParam, LPARAM lParam) {};
 
         bool RegisterListener(MSG_ID msgId, CListener *listener);
         bool UnregisterListener(MSG_ID msgId, CListener *listener);
         bool RegisterEvent(MSG_ID msgId);
-        void NotifySubscriber(MSG_ID msgId, WPARAM wParam, LPARAM lParam);
+        void NotifyListener(MSG_ID msgId, WPARAM wParam, LPARAM lParam);
 
     protected:
         static void MsgDispitcherThread(MsgEntity *pOwn);
@@ -78,5 +79,41 @@ namespace PG{
 
     private:
         static MsgEntityContainer m_msg_entities;
+    };
+
+    class CListener {
+    public:
+        CListener() {}
+        virtual ~CListener() {}
+
+    public:
+        virtual void OnEventFired(MsgEntity *pSender, MsgEntity::MSG_ID msg_id, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam) = 0;
+    };
+
+    class Publisher {
+    public:
+        Publisher() {}
+        virtual ~Publisher();
+        bool Subscribe(Subscriber* subscriber, MsgEntity::MSG_ID msgId);
+        bool Unsubscribe(Subscriber* subscriber, MsgEntity::MSG_ID msgId);
+        bool Unsubscribe(Subscriber* subscriber);
+        bool RegisterMsg(MsgEntity::MSG_ID msgId);
+
+    public:
+        void Publish(MsgEntity::MSG_ID msgId, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam);
+
+    private:
+        using SubscribersContainer = std::unordered_set<Subscriber*>;
+        using MsgContainer = std::unordered_map<MsgEntity::MSG_ID, SubscribersContainer*>;
+
+    private:
+        MsgContainer m_Msg;
+    };
+
+    class Subscriber {
+    public:
+        Subscriber() {}
+        virtual ~Subscriber() {}
+        virtual void OnPublished(MsgEntity::MSG_ID msgId, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam) = 0;
     };
 }

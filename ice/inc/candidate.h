@@ -34,7 +34,7 @@ namespace STUN {
         static const int16_t sMaxPacketSize = 128;
 
     public:
-        enum class OP {
+        enum class Msg {
             gathering,
             checking,
         };
@@ -44,12 +44,22 @@ namespace STUN {
         virtual ~Candidate() = 0 {}
 
     public:
-        bool StartGathering();
+        bool StartGathering(const std::string& ip, uint16_t port);
         bool StartChecking();
 
     public:
         virtual uint8_t TypePreference()    = 0;
         virtual uint8_t LocalPrefrerence()  = 0;
+
+    protected:
+        enum class InternalEvent : uint16_t {
+            BindRequest,
+            BindResp,
+            BindErrResp,
+            SSReq,
+            SSResp,
+            SSErrResp,
+        };
 
     protected:
         template<class channel_type, class socket_type,class endpoint_type>
@@ -72,7 +82,7 @@ namespace STUN {
                 {
                     if (channel->BindSocket<socket_type, endpoint_type>(channel->Socket(), ep))
                     {
-                        // active recv thread
+                        this->m_pChannel = channel.get();
                         m_RecvThrd = std::thread(Candidate::RecvThread,this);
                         return channel.release();
                     }
@@ -88,6 +98,7 @@ namespace STUN {
                         LOG_INFO("Candidate", "Create Channel [%s:%d] succeed", ep.address().to_string(), ep.port());
 
                         // active recv thread
+                        this->m_pChannel = channel.get();
                         m_RecvThrd = std::thread(Candidate::RecvThread, this);
                         return channel.release();
                     }
@@ -103,13 +114,9 @@ namespace STUN {
             }
 
         }
-
-        virtual void OnStunMsg(const BindingRequestMsg& reqMsg) {}
-        virtual void OnStunMsg(const BindingRespMsg& respMsg) {}
-        virtual void OnStunMsg(const BindingErrRespMsg& errRespMsg) {};
-        virtual void OnStunMsg(const SharedSecretRespMsg& ssRespMsg) {};
-        virtual void OnStunMsg(const SharedSecretReqMsg& ssReqMsg) {};
-        virtual void OnStunMsg(const SharedSecretErrRespMsg& errSSRespMsg) {};
+        bool Subscribe(PG::Subscriber *subscriber, InternalEvent event);
+        bool Unsubscribe(PG::Subscriber *subscriber);
+        bool Unsubscribe(PG::Subscriber *subscriber, InternalEvent event);
 
         virtual bool DoGathering(const std::string& ip, int16_t port) = 0;
         virtual bool DoChecking() = 0;
@@ -140,26 +147,44 @@ namespace STUN {
         void SetState(State eState);
 
     private:
+        void OnStunMsg(const BindingRequestMsg& reqMsg);
+        void OnStunMsg(const BindingRespMsg& respMsg);
+        void OnStunMsg(const BindingErrRespMsg& errRespMsg);
+        void OnStunMsg(const SharedSecretRespMsg& ssRespMsg);
+        void OnStunMsg(const SharedSecretReqMsg& ssReqMsg);
+        void OnStunMsg(const SharedSecretErrRespMsg& errSSRespMsg);
+
+    private:
         static void RecvThread(Candidate* pOwn);
         static void HandlePacketThread(Candidate *pOwn);
         static void CheckingThread(Candidate* pOwn);
-        static void GatheringThread(Candidate* pOwn);
+        static void GatheringThread(Candidate* pOwn, const std::string& ip, uint16_t port);
 
     private:
         std::thread m_RecvThrd;
         std::thread m_ConnThrd;
         std::thread m_GatheringThrd;
         std::atomic<State> m_State;
+        PG::Publisher      m_InternalEventPub;
     };
 
-    class HostCandidate : public Candidate{
+    class HostCandidate : public Candidate {
     public:
         using Candidate::Candidate;
         virtual ~HostCandidate();
+        virtual uint8_t TypePreference() override
+        {
+            return 0;
+        }
+
+        virtual uint8_t LocalPrefrerence() override
+        {
+            return 1;
+        }
 
     protected:
         virtual bool DoGathering(const std::string& ip, int16_t port) override;
-//      virtual bool DoChecking() override;
+        virtual bool DoChecking() override { return true; }
     };
 
     class ActiveCandidate : public HostCandidate {
@@ -182,14 +207,31 @@ namespace STUN {
 
     class SrflxCandidate : public Candidate {
     public:
-        SrflxCandidate(const ICE::CAgentConfig& config, const std::string& stun_server_ip, int16_t stun_port);
+        SrflxCandidate(const ICE::CAgentConfig& config, const std::string& stun_server_ip, int16_t stun_port) :
+            Candidate(config), m_StunServer(stun_server_ip), m_StunPort(stun_port)
+        {
+        }
         virtual ~SrflxCandidate();
 
     protected:
         virtual bool DoGathering(const std::string& ip, int16_t port) override;
+        virtual uint8_t TypePreference() override
+        {
+            return 0;
+        }
+
+        virtual uint8_t LocalPrefrerence() override
+        {
+            return 1;
+        }
+        virtual bool DoChecking() override { return true; }
 
     protected:
         const std::string& m_StunServer;
         const int16_t      m_StunPort;
+
+    private:
+        std::string m_IP;
+        uint16_t    m_Port;
     };
 }
