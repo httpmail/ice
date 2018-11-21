@@ -80,7 +80,7 @@ namespace STUN {
 
     /////////////////////////// Candidate class ////////////////////////////////////
     Candidate::Candidate(const ICE::CAgentConfig& config) :
-        m_pChannel(nullptr), m_State(State::init), m_Config(config), m_retransmission_cnt(0)
+        m_pChannel(nullptr), m_State(State::init), m_Quit(false), m_Config(config)
     {
         RegisterEvent(static_cast<uint16_t>(Msg::gathering));
         RegisterEvent(static_cast<uint16_t>(Msg::checking));
@@ -91,19 +91,47 @@ namespace STUN {
         m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::SSReq));
         m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::SSErrResp));
         m_InternalEventPub.RegisterMsg(static_cast<MSG_ID>(InternalEvent::SSResp));
+
+        m_HandleThrd = std::thread(Candidate::HandlePacketThread, this);
     }
 
-    bool Candidate::StartGathering(const std::string& ip, uint16_t port)
+    Candidate::~Candidate()
     {
+        m_RecvBuffer.ReleaseLocker();
+
+        m_Quit = true;
+        delete m_pChannel;
+        m_pChannel = nullptr;
+
+        if (m_GatheringThrd.joinable())
+            m_GatheringThrd.join();
+
+        if (m_RecvThrd.joinable())
+            m_RecvThrd.join();
+
+        if (m_ConnThrd.joinable())
+            m_ConnThrd.join();
+
+        if (m_HandleThrd.joinable())
+            m_HandleThrd.join();
+
+        delete m_pChannel;
+    }
+
+    bool Candidate::StartGathering()
+    {
+        assert(m_pChannel);
+
         if (!IsState(State::init))
         {
             LOG_WARNING("Candidate", "gathering only worked on init state, Current State: %d",
-                static_cast<uint8_t>(m_State.load(std::memory_order_relaxed)));
+                static_cast<uint8_t>(m_State.load()));
             return false;
         }
 
         SetState(State::gathering);
-        m_GatheringThrd = std::thread(Candidate::GatheringThread, this, ip, port);
+        m_RecvThrd = std::thread(Candidate::RecvThread, this);
+        m_GatheringThrd = std::thread(Candidate::GatheringThread, this);
         return true;
     }
 
@@ -124,16 +152,19 @@ namespace STUN {
 
     bool Candidate::Subscribe(PG::Subscriber *subscriber, InternalEvent event)
     {
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
         return m_InternalEventPub.Subscribe(subscriber, static_cast<uint16_t>(event));
     }
 
     bool Candidate::Unsubscribe(PG::Subscriber * subscriber)
     {
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
         return m_InternalEventPub.Unsubscribe(subscriber);
     }
 
     bool Candidate::Unsubscribe(PG::Subscriber * subscriber, InternalEvent event)
     {
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
         return m_InternalEventPub.Unsubscribe(subscriber, static_cast<uint16_t>(event));
     }
 
@@ -150,79 +181,92 @@ namespace STUN {
 
     void Candidate::OnStunMsg(const BindingRequestMsg & reqMsg)
     {
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
         m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&reqMsg, nullptr);
     }
 
     void Candidate::OnStunMsg(const BindingRespMsg & respMsg)
     {
-        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&respMsg, nullptr);
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindResp), (WPARAM)&respMsg, nullptr);
     }
 
     void Candidate::OnStunMsg(const BindingErrRespMsg & errRespMsg)
     {
-        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&errRespMsg, nullptr);
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindErrResp), (WPARAM)&errRespMsg, nullptr);
     }
 
     void Candidate::OnStunMsg(const SharedSecretRespMsg & ssRespMsg)
     {
-        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&ssRespMsg, nullptr);
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::SSResp), (WPARAM)&ssRespMsg, nullptr);
     }
 
     void Candidate::OnStunMsg(const SharedSecretReqMsg & ssReqMsg)
     {
-        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&ssReqMsg, nullptr);
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::SSReq), (WPARAM)&ssReqMsg, nullptr);
     }
 
     void Candidate::OnStunMsg(const SharedSecretErrRespMsg & errSSRespMsg)
     {
-        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::BindRequest), (WPARAM)&errSSRespMsg, nullptr);
+        std::lock_guard<decltype(m_InternalEventPubMutex)> locker(m_InternalEventPubMutex);
+        m_InternalEventPub.Publish(static_cast<uint16_t>(InternalEvent::SSErrResp), (WPARAM)&errSSRespMsg, nullptr);
     }
 
     void Candidate::RecvThread(Candidate* pOwn)
     {
-        while (1)
+        while (!pOwn->m_Quit)
         {
-            auto packet = pOwn->m_RecvBuffer.WaitFreePacket();
-            assert(!packet.IsNull());
-            pOwn->m_pChannel->Read(packet.Data(), packet.Size());
+            PACKET::stun_packet* packet = pOwn->m_RecvBuffer.LockWriter();
+            if (packet && !pOwn->m_Quit)
+            {
+                auto read_bytes = pOwn->m_pChannel->Read(packet, sizeof(PACKET::stun_packet));
+                LOG_INFO("Candidate", "RecvThread [%d]", read_bytes);
+                pOwn->m_RecvBuffer.UnlockWriter(read_bytes <= 0);
+            }
         }
     }
 
     void Candidate::HandlePacketThread(Candidate * pOwn)
     {
-        while (1)
+        while (!pOwn->m_Quit)
         {
-            auto packet = pOwn->m_RecvBuffer.WaitReadyPacket();
-
-            assert(packet.IsNull());
-
-            switch (packet->MsgId())
+            PACKET::stun_packet* packet = pOwn->m_RecvBuffer.LockReader();
+            if (packet && !pOwn->m_Quit)
             {
-            case MsgType::BindingRequest:
-                pOwn->OnStunMsg(BindingRequestMsg(*packet.Data()));
-                break;
+                LOG_INFO("Candidate", "HandlePacketMsg :%d", packet->MsgId());
 
-            case MsgType::BindingErrResp:
-                pOwn->OnStunMsg(BindingErrRespMsg(*packet.Data()));
-                break;
+                switch (packet->MsgId())
+                {
+                case MsgType::BindingRequest:
+                    pOwn->OnStunMsg(BindingRequestMsg(*packet));
+                    break;
 
-            case MsgType::BindingResp:
-                pOwn->OnStunMsg(BindingRespMsg(*packet.Data()));
-                break;
+                case MsgType::BindingErrResp:
+                    pOwn->OnStunMsg(BindingErrRespMsg(*packet));
+                    break;
 
-            case MsgType::SSErrResp:
-                pOwn->OnStunMsg(BindingErrRespMsg(*packet.Data()));
-                break;
+                case MsgType::BindingResp:
+                    pOwn->OnStunMsg(BindingRespMsg(*packet));
+                    break;
 
-            case MsgType::SSRequest:
-                pOwn->OnStunMsg(SharedSecretReqMsg(*packet.Data()));
-                break;
+                case MsgType::SSErrResp:
+                    pOwn->OnStunMsg(BindingErrRespMsg(*packet));
+                    break;
 
-            case MsgType::SSResponse:
-                pOwn->OnStunMsg(SharedSecretRespMsg(*packet.Data()));
-                break;
-            default:
-                break;
+                case MsgType::SSRequest:
+                    pOwn->OnStunMsg(SharedSecretReqMsg(*packet));
+                    break;
+
+                case MsgType::SSResponse:
+                    pOwn->OnStunMsg(SharedSecretRespMsg(*packet));
+                    break;
+                default:
+                    break;
+                }
+                pOwn->m_RecvBuffer.UnlockReader(false);
             }
         }
     }
@@ -235,11 +279,12 @@ namespace STUN {
         //pOwn->SetState(pOwn->DoGathering() ? State::checking_succeed : State::checking_failed);
     }
 
-    void Candidate::GatheringThread(Candidate* pOwn, const std::string& ip, uint16_t port)
+    void Candidate::GatheringThread(Candidate* pOwn)
     {
         assert(pOwn && pOwn->IsState(State::gathering));
 
-        auto ret = pOwn->DoGathering(ip, port);
+        auto ret = pOwn->DoGathering();
+        pOwn->NotifyListener(static_cast<PG::MsgEntity::MSG_ID>(Msg::gathering), PG::MsgEntity::WPARAM(ret), 0);
     }
 
     /////////////////////////// HostCandidate class ////////////////////////////////////
@@ -247,15 +292,22 @@ namespace STUN {
     {
     }
 
-    bool HostCandidate::DoGathering(const std::string& ip, int16_t port)
+    bool HostCandidate::Create(const std::string & localIP, uint16_t port)
     {
-        auto channel = CreateChannel<ICE::UDPChannel, boost::asio::ip::udp::socket, boost::asio::ip::udp::endpoint>(ip, port);
-        if (!channel)
+        auto channel = CreateChannel<ICE::UDPChannel, boost::asio::ip::udp::socket, boost::asio::ip::udp::endpoint>(localIP, port);
+
+        if (channel)
         {
-            LOG_ERROR("HostCandidate", "Create Local Channel [%s:%d] Failed!", ip.c_str(), port);
-            return false;
+            m_pChannel = channel;
+            return true;
         }
-        return true;
+
+        return false;
+    }
+
+    bool HostCandidate::DoGathering()
+    {
+        return m_pChannel != nullptr;
     }
 
     /////////////////////////// ActiveCandidate class ////////////////////////////////////
@@ -268,15 +320,15 @@ namespace STUN {
     {
     }
 
-    bool ActiveCandidate::DoGathering(const std::string& ip, int16_t port)
+    bool ActiveCandidate::Create(const std::string & localIP, uint16_t port)
     {
-        auto channel = CreateChannel<ICE::TCPActiveChannel, boost::asio::ip::tcp::socket, boost::asio::ip::tcp::endpoint>(ip,port);
-        if(!channel)
+        auto channel = CreateChannel<ICE::TCPActiveChannel, boost::asio::ip::tcp::socket, boost::asio::ip::tcp::endpoint>(localIP, port);
+        if (channel)
         {
-            LOG_ERROR("HostCandidate", "Create Local Channel [%s:%d] Failed!", ip.c_str(), port);
-            return false;
+            m_pChannel = channel;
+            return true;
         }
-        return true;
+        return false;
     }
 
     /////////////////////////// PassiveCandidate class ////////////////////////////////////
@@ -289,15 +341,15 @@ namespace STUN {
     {
     }
 
-    bool PassiveCandidate::DoGathering(const std::string& ip, int16_t port)
+    bool PassiveCandidate::Create(const std::string & localIP, uint16_t port)
     {
-        auto channel = CreateChannel<ICE::TCPPassiveChannel, boost::asio::ip::tcp::socket, boost::asio::ip::tcp::endpoint>(ip, port);
-        if (!channel)
+        auto channel = CreateChannel<ICE::TCPPassiveChannel, boost::asio::ip::tcp::socket, boost::asio::ip::tcp::endpoint>(localIP, port);
+        if (channel)
         {
-            LOG_ERROR("HostCandidate", "Create Local Channel [%s:%d] Failed!", ip.c_str(), port);
-            return false;
+            m_pChannel = channel;
+            return true;
         }
-        return true;
+        return false;
     }
 
     /////////////////////////// SrflxCandidate class ////////////////////////////////////
@@ -305,8 +357,21 @@ namespace STUN {
     {
     }
 
-    bool SrflxCandidate::DoGathering(const std::string& ip, int16_t port)
+    bool SrflxCandidate::Create(const std::string & localIP, uint16_t port)
     {
+        auto channel = CreateChannel<ICE::UDPChannel, boost::asio::ip::udp::socket, boost::asio::ip::udp::endpoint>(localIP, port);
+        if (channel && channel->BindRemote(m_StunServer, m_StunPort))
+        {
+            m_pChannel = channel;
+            return true;
+        }
+        return false;
+    }
+
+    bool SrflxCandidate::DoGathering()
+    {
+        assert(m_pChannel);
+
         TransId id;
         MessagePacket::GenerateRFC5389TransationId(id);
 
@@ -321,6 +386,8 @@ namespace STUN {
             }
             ~BindRespSubscriber() 
             {
+                int a = 0;
+                a++;
             }
 
             void OnPublished(MsgEntity::MSG_ID msgId, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam) override
@@ -374,6 +441,7 @@ namespace STUN {
             {
                 std::mutex mutex;
                 std::unique_lock<std::mutex> locker(mutex);
+                LOG_INFO("xxxxx", "Resp");
                 return std::cv_status::no_timeout == m_Cond.wait_for(locker, std::chrono::milliseconds(msec));
             }
 
@@ -385,19 +453,12 @@ namespace STUN {
 
         BindRespSubscriber subscriber(id, this);
 
-        while (m_retransmission_cnt < m_Config.Rc())
+        uint16_t retransmission_cnt = 0;
+        uint32_t rto = m_Config.RTO();
+        while (++retransmission_cnt < m_Config.Rc())
         {
-            m_retransmission_cnt++;
-
-            auto channel = CreateChannel<ICE::UDPChannel, boost::asio::ip::udp::socket, boost::asio::ip::udp::endpoint>(ip, port);
-            if (!channel || !channel->BindRemote(m_StunServer, m_StunPort))
-            {
-                LOG_ERROR("SrflxCandidate", "Create Local Channel[%s:%d] Failed!", ip.c_str(), port);
-                return false;
-            }
-
             // send the first bind request
-            if (-1 == channel->Write(subscriber.m_ReqMsg.GetData(), subscriber.m_ReqMsg.GetLength()))
+            if (-1 == m_pChannel->Write(subscriber.m_ReqMsg.GetData(), subscriber.m_ReqMsg.GetLength()))
             {
                 LOG_ERROR("SrflxCandidate", "Send BindRequestMsg Error");
                 return false;
@@ -410,11 +471,20 @@ namespace STUN {
                !!!!!!! NOTICE !!!!!!!
                Here RTO simply considered as 500ms
             */
-            if (subscriber.WaitForResp(m_Config.RTO() * (1 + m_retransmission_cnt * 2)))
+            LOG_INFO("acb", "1 %d", rto);
+            if (subscriber.WaitForResp(rto))
             {
                 return true;
             }
+            else
+            {
+                LOG_INFO("SrflxCandidate", "1st bind request timeout, retransmission [next timeout :%dms], [RC :%d]", 
+                    rto,
+                    retransmission_cnt - 1);
+            }
+            LOG_INFO("acb", "2");
         }
+        LOG_WARNING("SrflxCandidate", "1st bind request failed, because of timeout");
         return false;
     }
 }

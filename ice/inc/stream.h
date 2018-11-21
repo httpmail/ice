@@ -37,7 +37,7 @@ namespace ICE {
 
     public:
         Stream(uint8_t compId, Pipline pipline, const std::string& hostIp, uint16_t hostPort = 0) :
-            m_CompId(compId), m_Pipline(pipline), m_HostIP(hostIp), m_HostPort(hostPort),m_State(State::Init)
+            m_CompId(compId), m_Pipline(pipline), m_HostIP(hostIp), m_HostPort(hostPort),m_State(State::Init),m_Quit(false)
         {
             RegisterEvent(static_cast<PG::MsgEntity::MSG_ID>(Message::Gathering));
             RegisterEvent(static_cast<PG::MsgEntity::MSG_ID>(Message::Checking));
@@ -72,5 +72,6 @@ namespace ICE {
         std::mutex          m_CandsMutex;
         CandidateContainer  m_Cands;
         std::atomic<State>  m_State;
+        std::atomic_bool    m_Quit;
     };
 }

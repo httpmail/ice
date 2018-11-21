@@ -6,8 +6,17 @@ namespace ICE {
 
     Stream::~Stream()
     {
+        // wait gathering completed
         if (m_GatherThrd.joinable())
             m_GatherThrd.join();
+
+        std::lock_guard<decltype(m_CandsMutex)> locker(m_CandsMutex);
+        while (!m_Cands.empty())
+        {
+            auto itor = m_Cands.begin();
+            delete *itor;
+            m_Cands.erase(itor);
+        }
     }
 
     bool Stream::Create(const CAgentConfig& config)
@@ -29,8 +38,13 @@ namespace ICE {
 
         class GatheringHelper : public PG::CListener{
         public:
-            GatheringHelper()  {}
-            ~GatheringHelper() {}
+            GatheringHelper()
+            {
+            }
+
+            ~GatheringHelper()
+            {
+            }
 
         public:
             virtual void OnEventFired(PG::MsgEntity *pSender,
@@ -58,7 +72,7 @@ namespace ICE {
                 m_TimerCond.notify_one();
             }
 
-            bool DoGathering(STUN::Candidate * cand, const std::string & IP, uint16_t port)
+            bool DoGathering(STUN::Candidate * cand)
             {
                 using namespace STUN;
                 assert(cand);
@@ -72,7 +86,7 @@ namespace ICE {
                     return false;
                 }
 
-                if (!cand->StartGathering(IP, port))
+                if (!cand->StartGathering())
                     return false;
 
                 return true;
@@ -120,9 +134,13 @@ namespace ICE {
                 break;
             }
 
-            if (!cand.get() || !helper.DoGathering(cand.release(), pThis->m_HostIP, pThis->m_HostPort))
+            if (!cand.get() || !cand->Create(pThis->m_HostIP, pThis->m_HostPort) || !helper.DoGathering(cand.get()))
             {
                 LOG_ERROR("Stream", "Gathering Host Candidate Error");
+            }
+            else
+            {
+                cand.release();
             }
         }
 
@@ -135,10 +153,14 @@ namespace ICE {
             {
                 std::auto_ptr<SrflxCandidate> cand(new SrflxCandidate(config, stun.first, stun.second));
 
-                if (!cand.get() || !helper.DoGathering(cand.release(), pThis->m_HostIP, 0))
+                if (!cand.get() || !cand->Create(pThis->m_HostIP, 0) || !helper.DoGathering(cand.get()))
                 {
                     LOG_ERROR("Stream", "Gathering SrflxCandidate Error [%s:%d]", stun.first, stun.second);
                     continue;
+                }
+                else
+                {
+                    cand.release();
                 }
                 helper.WaitGathering(50);
             }

@@ -7,6 +7,12 @@ namespace ICE {
 
     boost::asio::io_service Channel::sIOService;
 
+    //static boost::asio::io_service sIOService;
+
+    Channel::~Channel()
+    {
+    }
+
     //////////////////////// UDPChannel //////////////////////////////
     UDPChannel::UDPChannel(boost::asio::io_service& service /*= sIOService*/) :
         m_Socket(service)
@@ -15,6 +21,14 @@ namespace ICE {
 
     UDPChannel::~UDPChannel()
     {
+        boost::system::error_code errCode;
+
+        m_Socket.shutdown(boost::asio::socket_base::shutdown_both, errCode);
+        if (errCode)
+        {
+            LOG_ERROR("UDPChannel", "shutdown error %d", errCode);
+        }
+        m_Socket.close();
     }
 
     bool UDPChannel::BindRemote(const std::string & ip, int16_t port) noexcept
@@ -68,6 +82,10 @@ namespace ICE {
     int16_t UDPChannel::Read(void* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open() && buffer && size);
+        if (!m_Socket.is_open() || !buffer || !size)
+        {
+            LOG_ERROR("Read", "Error");
+        }
         try
         {
             boost::system::error_code error;
@@ -91,6 +109,14 @@ namespace ICE {
 
     TCPChannel::~TCPChannel()
     {
+        boost::system::error_code errCode;
+        m_Socket.shutdown(boost::asio::socket_base::shutdown_both, errCode);
+        if (errCode)
+        {
+            LOG_ERROR("UDPChannel", "shutdown error %d", errCode);
+        }
+        m_Socket.close();
+
     }
 
     bool TCPChannel::Bind(const std::string& ip, int16_t port) noexcept

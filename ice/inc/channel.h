@@ -8,7 +8,7 @@ namespace ICE {
     class Channel {
     public:
         Channel() {}
-        virtual ~Channel() = 0 {};
+        virtual ~Channel() = 0;
 
     public:
         template<class socket_type, class endpoint_type>
