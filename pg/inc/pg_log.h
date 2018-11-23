@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include "pg_buffer.h"
 
 #define Enum2String(var) #var
 
@@ -25,8 +26,9 @@ namespace PG {
 
     public:
         static log& Instance();
-        bool Initlize(const std::string& file_path = "", int cache_size = sCacheSize);
-        void Output  (const char *pModule, const char *file_path, int line, const char* levelInfo, const char *pFormat, ...);
+
+        bool SetLogFile(const std::string& file_path);
+        void Output    (const char *pModule, const char *file_path, int line, const char* levelInfo, const char *pFormat, ...);
 
     private:
         log();
@@ -36,31 +38,25 @@ namespace PG {
         log(const log&) = delete;
         log& operator=(const log&) = delete;
 
-        template<class _Rep,class _Period,class _Predicate>
-        bool WaitForWriter(const std::chrono::duration<_Rep, _Period>& _Rel_time, _Predicate _Pred)
-        {
-            std::unique_lock<std::mutex> locker(m_writer_mutex);
-            return m_writer_condition.wait_for(locker, _Rel_time, _Pred);
-        }
-
     private:
         static void WriterThread(log *pInstance);
 
-    private:
-        using LogContainer = std::vector<std::string>;
-
-    private:
-        bool                    m_quit;
-        std::thread             m_writeThread;
-        std::fstream            m_fileHandle;
-        LogContainer            m_logs;
-        std::condition_variable m_writer_condition;
-        std::mutex              m_writer_mutex;
-        std::atomic_bool        m_bInited;
 
     private:
         static const int sMaxLineLength = 1024;
         static const int sMaxHeadLength = 128;
         static const int sCacheSize     = 256;
+        static const int sTLSCacheSize  = 256;
+
+        using TLSContainer = PG::CircularBuffer<char, sMaxHeadLength, sTLSCacheSize>;
+        using LogContainer = std::vector<TLSContainer*>;
+
+    private:
+        LogContainer            m_Logs;
+        std::mutex              m_LogMutex;
+        std::condition_variable m_LogCond;
+        std::thread             m_WriteThrd;
+        std::fstream            m_FileStream;
+        std::atomic_bool        m_bQuit;
     };
 }

@@ -135,7 +135,6 @@ namespace STUN {
         }
         catch (const std::exception&)
         {
-
         }
     }
 

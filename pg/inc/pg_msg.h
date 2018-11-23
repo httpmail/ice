@@ -5,6 +5,7 @@
 #include <vector>
 #include <condition_variable>
 #include <mutex>
+#include <atomic>
 #include "pg_object.h"
 
 namespace PG{
@@ -69,13 +70,13 @@ namespace PG{
 
     private:
         EventLisennerVes        m_listeners;
-        std::mutex              m_listeners_mutex;
+        std::recursive_mutex    m_listeners_mutex;
 
         MsgQueue                m_msg_queue;
         std::condition_variable m_queue_condition;
         std::mutex              m_queue_mutex;
         std::thread             m_thread;
-        bool                    m_quit;
+        std::atomic_bool        m_quit;
 
     private:
         static MsgEntityContainer m_msg_entities;

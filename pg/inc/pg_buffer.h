@@ -1,10 +1,11 @@
 #pragma once
 
 #include <vector>
-#include <unordered_set>
+#include <array>
 #include <condition_variable>
 #include <mutex>
 #include <atomic>
+#include <exception>
 #include <assert.h>
 
 namespace PG {
@@ -31,172 +32,251 @@ namespace PG {
         const int16_t m_capacity;
     };
 
-    template<class packet_type, uint16_t MAX_SIZE>
-    class PacketBuffer {
-    private:
-        using PacketContainer = std::vector<packet_type*>;
-
+    template<class T, uint16_t TSize, uint16_t TNumber>
+    class CircularBuffer {
     public:
-        class PacketGuard {
-        private:
-            PacketGuard(packet_type* packet, PacketContainer& recycleContainer, std::mutex &mutex, std::condition_variable &cond) :
-                m_packet(packet), m_isNull(packet == nullptr), m_recycleCon(recycleContainer), m_mutex(mutex), m_cond(cond),m_RefCnt(1)
-            {
-            }
+        using Elem = std::array<T, TSize>;
 
-        public:
-            PacketGuard(const PacketGuard& other)
-                :PacketGuard(other.m_packet, other.m_mutex, other.m_recycleCon, other.m_cond)
-            {
-                other.m_RefCnt++;
-                m_RefCnt = other.m_RefCnt;
-            }
-
-            PacketGuard& operator=(const PacketGuard& other)
-            {
-                if (&other == this)
-                    return *this;
-
-                m_recycleCon = other.m_recycleCon;
-                m_mutex = other.m_mutex;
-                m_cond = other.m_cond;
-                m_isNull = other.m_isNull;
-
-                m_packet = other.m_packet;
-                other.m_RefCnt++;
-                m_RefCnt = other.m_RefCnt;
-            }
-
-            bool IsNull() const { return m_isNull;}
-
-            ~PacketGuard()
-            {
-                m_RefCnt--;
-                if (!m_RefCnt)
-                {
-                    std::lock_guard<std::mutex> locker(m_mutex);
-                    if (m_packet)
-                    {
-                        m_recycleCon.push_back(m_packet);
-                        m_cond.notify_all();
-                    }
-                    m_RefCnt = 0;
-                }
-            }
-
-            packet_type* Data() const
-            {
-                return m_packet;
-            }
-
-            uint16_t Size() const
-            {
-                return sizeof(m_packet);
-            }
-
-            packet_type* operator->() { assert(m_isNull);  return m_packet; }
-            const packet_type* operator->() const { assert(m_isNull); return m_packet; }
-
-        private:
-            packet_type         *m_packet;
-            bool                 m_isNull;
-            std::atomic<int16_t> m_RefCnt;
-            PacketContainer     &m_recycleCon;
-            std::mutex          &m_mutex;
-            std::condition_variable &m_cond;
-            friend class PacketBuffer<packet_type, MAX_SIZE>;
+    private:
+        enum class flag : uint8_t {
+            free    = 0,
+            writing = 1,
+            wrote   = 2,
+            reading = 3,
         };
 
+        struct ElemWrapper {
+            ElemWrapper() :
+                _flag(flag::free)
+            {
+            }
+            Elem _elem;
+            flag _flag;
+        };
+        using Container = std::array<ElemWrapper, TNumber>;
+
     public:
-        PacketBuffer() 
-        {
-            static_assert(MAX_SIZE, "buffer_size MUST > 0");
-            static_assert(!std::is_pointer<packet_type>::value, "packet_type cannot be pointer");
-            static_assert(std::is_class<packet_type>::value, "packet_type MUST be a class or struct");
-
-            m_FreePacket.reserve(MAX_SIZE);
-            m_ReadyPacket.reserve(MAX_SIZE);
-
-            for (int i = 0; i < MAX_SIZE; ++i)
-                m_FreePacket.push_back(&m_Packet[i]);
-        }
-
-        virtual ~PacketBuffer()
+        CircularBuffer() :
+            m_Size(0), m_WriterIndex(0), m_ReaderIndex(0)
         {
         }
 
-        PacketBuffer(const PacketBuffer&) = delete;
-
-        PacketGuard GetFreePacket()
+        virtual ~CircularBuffer()
         {
-            std::lock_guard<std::mutex> locker(m_FreePacketMutex);
-            if (m_FreePacket.size())
-            {
-                auto packet = *m_FreePacket.begin();
-                m_FreePacket.erase(m_FreePacket.begin());
-                return PacketGuard(packet, m_ReadyPacket,m_ReadyPacketMutex, m_ReadyCondition);
-            }
-            return PacketGuard(nullptr, m_ReadyPacket, m_ReadyPacketMutex, m_ReadyCondition);
         }
 
-        PacketGuard GetReadyPacket()
+        Elem& Lock4Write()
         {
-            std::lock_guard<std::mutex> locker(m_ReadyPacketMutex);
-            if (m_ReadyPacket.size())
-            {
-                auto packet = *m_ReadyPacket.begin();
-                m_ReadyPacket.erase(m_ReadyPacket.begin());
-                return PacketGuard(packet, m_FreePacket, m_FreePacketMutex, m_FreeCondition);
-            }
-            return PacketGuard(nullptr, m_FreePacket, m_FreePacketMutex, m_FreeCondition);
-        }
-
-        PacketGuard WaitFreePacket()
-        {
-            std::unique_lock<std::mutex> locker(m_FreePacketMutex);
-            m_FreeCondition.wait(locker, [this] {
-                return !this->m_FreePacket.empty();
+            std::unique_lock<decltype(m_Wait4FreeMutex)> locker(m_Wait4FreeMutex);
+            m_Wait4Free.wait(locker, [this]{
+                return this->m_Size < TNumber;
             });
 
-            auto packet = *m_FreePacket.begin();
-            m_FreePacket.erase(m_FreePacket.begin());
-            return PacketGuard(packet, m_ReadyPacket, m_ReadyPacketMutex, m_ReadyCondition);
+            if (this->m_Size == TNumber)
+                throw std::out_of_range("CircularBuffer destruct!!");
+
+            auto index = m_WriterIndex;
+
+            assert(m_Buffer[index]._flag == flag::free);
+
+            m_Buffer[index]._flag = flag::writing;
+            return m_Buffer[index]._elem;
         }
 
-        PacketGuard WaitReadyPacket()
+        Elem& Lock4Read()
         {
-            std::unique_lock<std::mutex> locker(m_ReadyPacketMutex);
-            m_ReadyCondition.wait(locker, [this] {
-                return !this->m_ReadyPacket.empty();
+            std::unique_lock<decltype(m_Wait4ReadyMutex)> locker(m_Wait4ReadyMutex);
+            m_Wait4Ready.wait(locker, [this] {
+                return this->m_Size;
             });
 
-            auto packet = *m_ReadyPacket.begin();
-            m_ReadyPacket.erase(m_ReadyPacket.begin());
-            return PacketGuard(packet, m_FreePacket, m_FreePacketMutex, m_FreeCondition);
+            if (m_Size == 0)
+                throw std::out_of_range("CircularBuffer destruct!!");
+
+            auto index = m_ReaderIndex;
+
+            assert(m_Buffer[index]._flag == flag::wrote);
+
+            m_Buffer[index]._flag = flag::reading;
+            return m_Buffer[index]._elem;
         }
 
-        template<class _Rep, class _Period, class _Predicate>
-        bool WaitForFreePacket(const std::chrono::duration<_Rep, _Period>& _Rel_time, _Predicate _Pred)
+        uint16_t Size() const
         {
-            std::unique_lock<std::mutex> locker(m_FreePacketMutex);
-            return m_FreeCondition.wait_for(locker, _Rel_time, _Pred);
+            return m_Size;
         }
 
-        template<class _Rep, class _Period, class _Predicate>
-        bool WaitForReadyPacket(const std::chrono::duration<_Rep, _Period>& _Rel_time, _Predicate _Pred)
+        void Unlock(const Elem& elem, bool bCanceled = false)
         {
-            std::unique_lock<std::mutex> locker(m_ReadyPacketMutex);
-            return m_ReadyCondition.wait_for(locker, _Rel_time, _Pred);
+            auto wIndex = m_WriterIndex;
+            auto rIndex = m_ReaderIndex;
+
+            assert(&elem == &m_Buffer[wIndex]._elem || &elem == &m_Buffer[rIndex]._elem);
+
+            if (&elem == &m_Buffer[wIndex]._elem && m_Buffer[wIndex]._flag == flag::writing)
+            {
+
+                if (bCanceled)
+                {
+                    m_Buffer[wIndex]._flag = flag::free;
+                    return;
+                }
+
+                m_Buffer[wIndex]._flag = flag::wrote;
+
+                wIndex++;
+                if (wIndex == TNumber)
+                    wIndex = 0;
+                m_WriterIndex = wIndex;
+                m_Size++;
+                m_Wait4Ready.notify_one();
+            }
+            else if (&elem == &m_Buffer[rIndex]._elem && m_Buffer[rIndex]._flag == flag::reading)
+            {
+                if (bCanceled)
+                {
+                    m_Buffer[rIndex]._flag = flag::wrote;
+                    return;
+                }
+
+                m_Buffer[rIndex]._flag = flag::free;
+
+                rIndex++;
+                if (rIndex == TNumber)
+                    rIndex = 0;
+
+                m_ReaderIndex = rIndex;
+                m_Size--;
+                m_Wait4Free.notify_one();
+            }
+            else
+            {
+                assert(0);
+            }
         }
 
-    protected:
-        std::mutex              m_FreePacketMutex;
-        std::mutex              m_ReadyPacketMutex;
-        std::condition_variable m_FreeCondition;
-        std::condition_variable m_ReadyCondition;
+    private:
+        std::array<ElemWrapper, TNumber> m_Buffer;
+        std::mutex m_Wait4FreeMutex;
+        std::mutex m_Wait4ReadyMutex;
+        std::condition_variable m_Wait4Free;
+        std::condition_variable m_Wait4Ready;
+        std::uint16_t m_Size;
+        std::uint16_t m_WriterIndex;
+        std::uint16_t m_ReaderIndex;
+    };
 
-        PacketContainer m_FreePacket;
-        PacketContainer m_ReadyPacket;
-        packet_type     m_Packet[MAX_SIZE];
+    template<class _Elem, uint16_t _Size>
+    class FIFOBuffer {
+    public:
+        FIFOBuffer() :
+            m_ReleaseFlag(false),
+            m_write(0),
+            m_WriterIndex(0),m_ReaderIndex(0),
+            m_WriterLocked(false),m_ReaderLocked(false)
+        {
+            static_assert(_Size, "Size Must > 0");
+        }
+
+        ~FIFOBuffer()
+        {
+            m_ReaderCond.notify_all();
+            m_WriterCond.notify_all();
+        }
+
+        _Elem* LockWriter()
+        {
+            std::unique_lock<decltype(m_WriterMutex)> locker(m_WriterMutex);
+            if (m_ReleaseFlag)
+                return nullptr;
+
+            m_WriterCond.wait(locker, [this] {
+                return (!this->m_WriterLocked && this->m_write < _Size) || this->m_ReleaseFlag;
+            });
+
+            assert(!m_WriterLocked && this->m_write < _Size);
+
+            if (m_ReleaseFlag)
+                return nullptr;
+
+            m_WriterLocked = true;
+            return &m_Elems[m_WriterIndex];
+        }
+
+        void UnlockWriter(bool bCanceled = false)
+        {
+
+            assert(m_WriterLocked);
+
+            std::unique_lock<decltype(m_WriterMutex)> locker(m_WriterMutex);
+            m_WriterLocked = false;
+            if (bCanceled)
+                return;
+
+            m_write++;
+            assert(m_write <= _Size);
+
+            m_WriterIndex++;
+            if (m_WriterIndex == _Size)
+                m_WriterIndex = 0;
+
+            m_ReaderCond.notify_one();
+            m_WriterCond.notify_one();
+        }
+
+        _Elem* LockReader()
+        {
+            std::unique_lock<decltype(m_ReaderMutex)> locker(m_ReaderMutex);
+
+            assert(!m_ReaderLocked);
+            m_ReaderCond.wait(locker, [this] {
+                return (this->m_write && !this->m_ReaderLocked) || this->m_ReleaseFlag;
+            });
+
+            if (m_ReleaseFlag)
+                return nullptr;
+
+            m_ReaderLocked = true;
+            return &m_Elems[m_ReaderIndex];
+        }
+
+        void UnlockReader(bool bCanceled)
+        {
+            std::unique_lock<decltype(m_ReaderMutex)> locker(m_ReaderMutex);
+            assert(m_ReaderLocked);
+
+            m_ReaderLocked = false;
+            if (bCanceled)
+                return;
+
+            m_write--;
+            m_ReaderIndex++;
+            if (m_ReaderIndex == _Size)
+                m_ReaderIndex = 0;
+
+            m_WriterCond.notify_all();
+        }
+
+        void ReleaseLocker()
+        {
+            m_ReleaseFlag = true;
+            m_ReaderCond.notify_all();
+            m_WriterCond.notify_all();
+        }
+
+    private:
+        _Elem    m_Elems[_Size];
+        std::atomic_bool     m_ReleaseFlag;
+        std::atomic_uint16_t m_write;
+
+        bool     m_WriterLocked;
+        uint16_t m_WriterIndex;
+        std::mutex        m_WriterMutex;
+        std::condition_variable m_WriterCond;
+
+        bool m_ReaderLocked;
+        uint16_t m_ReaderIndex;
+        std::mutex m_ReaderMutex;
+        std::condition_variable m_ReaderCond;
     };
 }

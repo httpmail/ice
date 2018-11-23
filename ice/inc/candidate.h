@@ -1,240 +1,172 @@
-
 #pragma once
 
 #include <thread>
-#include <atomic>
-#include <type_traits>
+#include <stdint.h>
 
-#include "stundef.h"
-
-#include "pg_util.h"
-#include "pg_log.h"
-#include "pg_buffer.h"
 #include "pg_msg.h"
+#include "pg_log.h"
+#include "stundef.h"
 
 namespace ICE {
     class Channel;
-    class CAgent;
-    class Session;
-    class CAgentConfig;
-}
 
-namespace STUN {
-    class BindingRequestMsg;
-    class BindingRespMsg;
-    class BindingErrRespMsg;
-    class SharedSecretRespMsg;
-    class SharedSecretReqMsg;
-    class SharedSecretErrRespMsg;
-}
-
-namespace STUN {
-    class Candidate : public PG::MsgEntity{
-    protected:
-        static const int16_t sMaxPacketSize = 128;
-
+    class Candidate {
     public:
-        enum class Msg {
-            gathering,
-            checking,
-        };
-
-    public:
-        Candidate(const ICE::CAgentConfig& config);
+        Candidate();
         virtual ~Candidate();
 
     public:
-        bool StartGathering();
-        bool StartChecking();
-
-    public:
-        virtual uint8_t TypePreference()    = 0;
-        virtual uint8_t LocalPrefrerence()  = 0;
-        virtual bool Create(const std::string& localIP, uint16_t port) = 0;
+        virtual bool Create(const std::string& local, uint16_t port) = 0;
+        virtual bool Gather(const std::string& remote, uint16_t port) = 0;
+        virtual bool CheckConnectivity() = 0;
 
     protected:
-        enum class InternalEvent : uint16_t {
+        template<class T>
+        static T* CreateChannel(const std::string& ip, uint16_t port)
+        {
+            static_assert(!std::is_pointer<T>::value || !std::is_reference<T>::value , "channel_type cannot be pointer or ref");
+            static_assert(std::is_base_of<UDPChannel, T>::value || std::is_base_of<TCPChannel, T>::value,
+                          "the base class of channel MUST be UDPChannel or TCPChannel");
+
+            constexpr bool is_udp = std::is_base_of<UDPChannel, T>::value;
+            using endpoint_type = channel_type<is_udp>::endpoint;
+            using socket_type   = channel_type<is_udp>::socket;
+            try
+            {
+                std::auto_ptr<T> channel(new T);
+                endpoint_type ep(boost::asio::ip::address::from_string(ip), port);
+                if (ep.port())
+                {
+                    if (channel->BindSocket<socket_type, endpoint_type>(channel->Socket(), ep))
+                    {
+                        LOG_INFO("Candidate", "Channel Created[%s:%d]", ip.c_str(), port);
+                        return channel.release();
+                    }
+                }
+                LOG_ERROR("Candidate", "Create Channle Failed [%s] with random port", ip.c_str());
+                return nullptr;
+            }
+            catch (const std::exception& e)
+            {
+                LOG_ERROR("Candidate", "CreateChannel exception %s",e.what());
+                return nullptr;
+            }
+        }
+
+        template<class T>
+        static T* CreateChannel(const std::string& ip, uint16_t lowPort, uint16_t upperPort)
+        {
+            assert(lowPort < upperPort);
+
+            static_assert(!std::is_pointer<T>::value || !std::is_reference<T>::value, "channel_type cannot be pointer or ref");
+            static_assert(std::is_base_of<UDPChannel, T>::value || std::is_base_of<TCPChannel, T>::value,
+                "the base class of channel MUST be UDPChannel or TCPChannel");
+
+            constexpr bool is_udp = std::is_base_of<UDPChannel, T>::value;
+            using endpoint_type = channel_type<is_udp>::endpoint;
+            using socket_type = channel_type<is_udp>::socket;
+
+            try
+            {
+                std::auto_ptr<T> channel(new T);
+
+                endpoint_type ep(boost::asio::ip::address::from_string(ip), 0);
+                for (decltype(sMaxBindTimes) i = 0; i < sMaxBindTimes; ++i)
+                {
+                    if (channel->BindSocket<socket_type, endpoint_type>(channel->Socket(), ep))
+                    {
+                        LOG_INFO("Candidate", "Channel Created[%s:%d]", ip.c_str(), port);
+                        return channel.release();
+                    }
+                }
+
+                LOG_ERROR("Candidate", "Create Channle Failed [%s] with random port", ip.c_str());
+                return nullptr;
+            }
+            catch (const std::exception& e)
+            {
+                LOG_ERROR("Candidate", "CreateChannel exception %s", e.what());
+                return nullptr;
+            }
+        }
+
+    protected:
+        enum class InternalMsg {
             BindRequest,
             BindResp,
             BindErrResp,
             SSReq,
             SSResp,
             SSErrResp,
+            Quit,
         };
 
     protected:
-        template<class channel_type, class socket_type,class endpoint_type>
-        channel_type* CreateChannel(const std::string& ip, int16_t port)
-        {
-            using namespace boost::asio::ip;
-            static_assert(!std::is_pointer<channel_type>::value, "channel_type cannot be a pointer");
-            static_assert(!std::is_pointer<socket_type>::value,  "socket_type cannot be a pointer");
-            static_assert(!std::is_pointer<endpoint_type>::value, "endpoint_type cannot be a pointer");
-
-            static_assert(std::is_base_of<ICE::UDPChannel, channel_type>::value && std::is_base_of<udp::socket, socket_type>::value && std::is_base_of<udp::endpoint, endpoint_type>::value ||
-                std::is_base_of<ICE::TCPChannel, channel_type>::value && std::is_base_of<tcp::socket, socket_type>::value && std::is_base_of<tcp::endpoint,endpoint_type>::value,
-                "wrong types");
-
-            endpoint_type ep(boost::asio::ip::address::from_string(ip), port);
-            try
-            {
-                std::auto_ptr<channel_type> channel(new channel_type);
-                if (ep.port())
-                {
-                    if (channel->BindSocket<socket_type, endpoint_type>(channel->Socket(), ep))
-                        return channel.release();
-                    LOG_WARNING("Candidate", "Create Channel [%s:%d] failed, try to bind with random port", ep.address().to_string(), ep.port());
-                }
-
-                for (int16_t i = 0; i < sMaxBindTries; ++i)
-                {
-                    auto portRange = m_Config.GetPortRange();
-                    ep.port(PG::GenerateRandom(portRange.Lower(), portRange.Upper()));
-                    if (channel->BindSocket<socket_type, endpoint_type>(channel->Socket(), ep))
-                    {
-                        LOG_INFO("Candidate", "Create Channel [%s:%d] succeed", ep.address().to_string(), ep.port());
-                        return channel.release();
-                    }
-                }
-
-                LOG_INFO("Candidate", "Create Channel [%s:%d] failed");
-                return nullptr;
-            }
-            catch (const std::exception &e)
-            {
-                LOG_ERROR("Candidate", "Create Channel[%s:%d] exception :%s", ep.address().to_string().c_str(), ep.port(), e.what());
-                return nullptr;
-            }
-
-        }
-        bool Subscribe(PG::Subscriber *subscriber, InternalEvent event);
-        bool Unsubscribe(PG::Subscriber *subscriber);
-        bool Unsubscribe(PG::Subscriber *subscriber, InternalEvent event);
-
-        virtual bool DoGathering() = 0;
-        virtual bool DoChecking() = 0;
+        bool Subscribe(InternalMsg msg, PG::Subscriber* subscriber);
+        bool Unsubscribe(InternalMsg msg, PG::Subscriber* subscriber);
+        bool Unsubscribe(PG::Subscriber* subscriber);
 
     protected:
-        ICE::Channel            *m_pChannel;
-        PG::FIFOBuffer<PACKET::stun_packet, sMaxPacketSize> m_RecvBuffer;
-
-        const ICE::CAgentConfig &m_Config;
-        static uint64_t         sRoleAttrContent; /* */
-        static const int16_t    sMaxBindTries = 5;
+        Channel *m_pChannel;
 
     private:
-        enum class State : uint8_t {
-            init = 0,
-            gathering,
-            gathering_succeed,
-            gathering_failed,
-            checking,
-            checking_succeed,
-            checking_failed,
-            completed,
-        };
+        static void RecvThread(Candidate* pThis);
 
     private:
-        bool IsState(State eState);
-        void SetState(State eState);
+        static const uint8_t sMaxBindTimes = 5;
+        static const uint8_t sPacketCache = 128;
 
     private:
-        void OnStunMsg(const BindingRequestMsg& reqMsg);
-        void OnStunMsg(const BindingRespMsg& respMsg);
-        void OnStunMsg(const BindingErrRespMsg& errRespMsg);
-        void OnStunMsg(const SharedSecretRespMsg& ssRespMsg);
-        void OnStunMsg(const SharedSecretReqMsg& ssReqMsg);
-        void OnStunMsg(const SharedSecretErrRespMsg& errSSRespMsg);
-
-    private:
-        static void RecvThread(Candidate* pOwn);
-        static void HandlePacketThread(Candidate *pOwn);
-        static void CheckingThread(Candidate* pOwn);
-        static void GatheringThread(Candidate* pOwn);
-
-    private:
-        std::thread m_RecvThrd;
-        std::thread m_ConnThrd;
-        std::thread m_GatheringThrd;
-        std::thread m_HandleThrd;
-        std::atomic<State> m_State;
-        std::atomic_bool   m_Quit;
-        std::recursive_mutex    m_InternalEventPubMutex;
-        PG::Publisher           m_InternalEventPub;
+        std::thread          m_RecvThrd;
+        std::atomic_bool     m_bQuit;
+        std::recursive_mutex m_InternalMsgMutex;
+        PG::Publisher        m_InternalMsgPub;
+        PG::CircularBuffer<STUN::PACKET::stun_packet, 1, sPacketCache> m_Packets;
     };
 
+    ////////////////////////////// Host Candidate //////////////////////////////
     class HostCandidate : public Candidate {
     public:
         using Candidate::Candidate;
-        virtual ~HostCandidate();
 
     public:
-        virtual uint8_t TypePreference() override
-        {
-            return 0;
-        }
-
-        virtual uint8_t LocalPrefrerence() override
-        {
-            return 1;
-        }
-
-        virtual bool Create(const std::string& localIP, uint16_t port) override;
-
-    protected:
-        virtual bool DoGathering() override;
-        virtual bool DoChecking() override { return true; }
+        virtual bool Create(const std::string& local, uint16_t port) override;
+        virtual bool Gather(const std::string&, uint16_t) override;
+        virtual bool CheckConnectivity();
     };
 
+    ////////////////////////////// ActiveCandidate //////////////////////////////
     class ActiveCandidate : public HostCandidate {
     public:
-        ActiveCandidate(const ICE::CAgentConfig& config);
-        virtual ~ActiveCandidate();
+        using HostCandidate::HostCandidate;
 
     public:
-        virtual bool Create(const std::string& localIP, uint16_t port) override;
+        virtual bool Create(const std::string& local, uint16_t port) override;
+        virtual bool CheckConnectivity();
     };
 
+    ////////////////////////////// PassiveCandidate //////////////////////////////
     class PassiveCandidate : public HostCandidate {
     public:
-        PassiveCandidate(const ICE::CAgentConfig& config);
-        virtual ~PassiveCandidate();
+        using HostCandidate::HostCandidate;
 
     public:
-        virtual bool Create(const std::string& localIP, uint16_t port) override;
-
+        virtual bool Create(const std::string& local, uint16_t port) override;
+        virtual bool CheckConnectivity();
     };
 
+    ////////////////////////////// SrflxCandidate //////////////////////////////
     class SrflxCandidate : public Candidate {
     public:
-        SrflxCandidate(const ICE::CAgentConfig& config, const std::string& stun_server_ip, int16_t stun_port) :
-            Candidate(config), m_StunServer(stun_server_ip), m_StunPort(stun_port)
-        {
-        }
-        virtual ~SrflxCandidate();
+        using Candidate::Candidate;
 
     public:
-        virtual bool Create(const std::string& localIP, uint16_t port) override;
-
-    protected:
-        virtual bool DoGathering() override;
-        virtual uint8_t TypePreference() override
-        {
-            return 0;
-        }
-
-        virtual uint8_t LocalPrefrerence() override
-        {
-            return 1;
-        }
-        virtual bool DoChecking() override { return true; }
-
-    protected:
-        const std::string& m_StunServer;
-        const int16_t      m_StunPort;
+        virtual bool Create(const std::string& local, uint16_t port) override;
+        virtual bool Gather(const std::string& remote, uint16_t port) override;
+        virtual bool CheckConnectivity();
 
     private:
-        std::string m_IP;
-        uint16_t    m_Port;
+        std::string m_SrflxIP;
+        uint16_t    m_SrflxPort;
     };
 }

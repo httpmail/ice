@@ -5,6 +5,19 @@
 #include <type_traits>
 
 namespace ICE {
+
+    template<bool is_upd>
+    struct channel_type { 
+        using endpoint = boost::asio::ip::tcp::endpoint;
+        using socket = boost::asio::ip::tcp::socket;
+    };
+
+    template<>
+    struct channel_type<true> {
+        using endpoint = boost::asio::ip::udp::endpoint;
+        using socket = boost::asio::ip::udp::socket;
+    };
+
     class Channel {
     public:
         Channel() {}

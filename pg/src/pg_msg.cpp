@@ -6,12 +6,16 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
+#include "pg_buffer.h"
+
+PG::CircularBuffer<char, 12, 12> b;
 
 namespace PG {
 
     MsgEntity::MsgEntityContainer MsgEntity::m_msg_entities;
 
-    MsgEntity::MsgEntity()
+    MsgEntity::MsgEntity():
+        m_quit(false)
     {
         assert(m_msg_entities.find(this) == m_msg_entities.end());
         m_msg_entities.insert(this);
@@ -25,14 +29,14 @@ namespace PG {
 
     void MsgEntity::Close()
     {
-        std::lock_guard<std::mutex> locker(m_queue_mutex);
         if (!m_quit)
         {
             m_quit = true;
-
-            if (m_thread.joinable())
-                m_thread.join();
+            m_queue_condition.notify_one();
         }
+
+        if (m_thread.joinable())
+            m_thread.join();
     }
 
     bool MsgEntity::SendMessage(MSG_ID msgId, WPARAM wParam, LPARAM lParam)
@@ -43,7 +47,7 @@ namespace PG {
 
     bool MsgEntity::PostMessage(MSG_ID msgId, WPARAM wParam, LPARAM lParam)
     {
-        std::lock_guard<std::mutex> locker(m_queue_mutex);
+        std::lock_guard<decltype(m_queue_mutex)> locker(m_queue_mutex);
         CMsgWrapper msg(msgId, wParam, lParam);
         m_msg_queue.push_back(msg);
         m_queue_condition.notify_one();
@@ -57,13 +61,12 @@ namespace PG {
 
     bool MsgEntity::UnregisterEventListenner(MSG_ID msgId, CListener * listener)
     {
-
         return UnregisterListener(msgId, listener);
     }
 
     bool MsgEntity::RegisterListener(MSG_ID msgId, CListener * listener)
     {
-        std::lock_guard<std::mutex> locker(m_listeners_mutex);
+        std::lock_guard<decltype(m_listeners_mutex)> locker(m_listeners_mutex);
         auto itor = m_listeners.find(msgId);
         if (itor == m_listeners.end())
         {
@@ -81,7 +84,7 @@ namespace PG {
 
     bool MsgEntity::UnregisterListener(MSG_ID msgId, CListener * listener)
     {
-        std::lock_guard<std::mutex> locker(m_listeners_mutex);
+        std::lock_guard<decltype(m_listeners_mutex)> locker(m_listeners_mutex);
         auto itor = m_listeners.find(msgId);
         if (itor == m_listeners.end())
         {
@@ -99,7 +102,7 @@ namespace PG {
 
     bool MsgEntity::RegisterEvent(MSG_ID msgId)
     {
-        std::lock_guard<std::mutex> locker(m_listeners_mutex);
+        std::lock_guard<decltype(m_listeners_mutex)> locker(m_listeners_mutex);
         auto itor = m_listeners.find(msgId);
         if (itor != m_listeners.end())
             return true;
@@ -122,12 +125,14 @@ namespace PG {
 
     void MsgEntity::NotifyListener(MSG_ID msgId, WPARAM wParam, LPARAM lParam)
     {
+        std::lock_guard<decltype(m_listeners_mutex)> locker(m_listeners_mutex);
         auto itor = m_listeners.find(msgId);
         if (itor != m_listeners.end())
         {
-            for (auto listener : *itor->second)
+            while (!itor->second->empty())
             {
-                listener->OnEventFired(this,msgId, wParam, lParam);
+                auto listener = itor->second->begin();
+                (*listener)->OnEventFired(this, msgId, wParam, lParam);
             }
         }
     }
@@ -136,9 +141,9 @@ namespace PG {
     {
         assert(pOwn);
 
-        while (1)
+        while (pOwn->m_quit)
         {
-            std::unique_lock<std::mutex> locker(pOwn->m_queue_mutex);
+            std::unique_lock<decltype(pOwn->m_queue_mutex)> locker(pOwn->m_queue_mutex);
             pOwn->m_queue_condition.wait(locker, [&pOwn] {
                 return !pOwn->m_msg_queue.empty() || pOwn->m_quit;
             });
@@ -153,11 +158,8 @@ namespace PG {
             for (auto msg : tempQueue)
             {
                 pOwn->OnMsgReceived(msg.MsgId(), msg.WParam(), msg.LParam());
-                {
-                    std::lock_guard<std::mutex> locker(pOwn->m_queue_mutex);
-                    if (pOwn->m_quit)
-                        break;
-                }
+                if (pOwn->m_quit)
+                    return;
             }
         }
     }
@@ -165,9 +167,13 @@ namespace PG {
     //////////////////////////// Publisher ////////////////////////////////////
     Publisher::~Publisher()
     {
-        std::for_each(m_Msg.begin(), m_Msg.end(), [](auto itor) {
-            delete itor.second;
-        });
+        while (!m_Msg.empty())
+        {
+            auto itor = m_Msg.begin();
+            assert(itor->second->empty());
+            delete itor->second;
+            m_Msg.erase(itor);
+        }
     }
 
     bool Publisher::Subscribe(Subscriber * subscriber, MsgEntity::MSG_ID msgId)
@@ -177,12 +183,11 @@ namespace PG {
         auto itor = m_Msg.find(msgId);
         if (itor == m_Msg.end())
         {
-            LOG_ERROR("Publisher", "Msg Id unregistered[%d]", msgId);
+            LOG_ERROR("Publisher", "Subscribe Msg [%d] unregistered", msgId);
             return false;
         }
 
         assert(itor->second);
-
         return itor->second->insert(subscriber).second;
     }
 
@@ -193,12 +198,11 @@ namespace PG {
         auto itor = m_Msg.find(msgId);
         if (itor == m_Msg.end())
         {
-            LOG_ERROR("Publisher", "Msg Id unregistered[%d]", msgId);
+            LOG_ERROR("Publisher", "Unsubscribe Msg [%d] unregistered", msgId);
             return false;
         }
 
         assert(itor->second);
-
         itor->second->erase(subscriber);
 
         return true;
@@ -208,17 +212,17 @@ namespace PG {
     {
         assert(subscriber);
 
-        std::for_each(m_Msg.begin(), m_Msg.end(), [subscriber](auto s){
-            s.second->erase(subscriber);
+        std::for_each(m_Msg.begin(), m_Msg.end(), [subscriber](auto& itor){
+            itor.second->erase(subscriber);
         });
-
         return true;
     }
+
     bool Publisher::RegisterMsg(MsgEntity::MSG_ID msgId)
     {
         if (m_Msg.end() != m_Msg.find(msgId))
         {
-            LOG_WARNING("Publisher", "msg :[%d] already existed", msgId);
+            LOG_WARNING("Publisher", "msg :[%d] has been registered", msgId);
             return true;
         }
 
@@ -237,15 +241,15 @@ namespace PG {
 
         if (msg == m_Msg.end())
         {
-            LOG_WARNING("Publisher", "Unregistered msg [%d]", msgId);
+            LOG_WARNING("Publisher", "Publish msg [%d] Unregistered", msgId);
             return;
         }
 
         assert(msg->second);
 
-        std::for_each(msg->second->begin(), msg->second->end(), [msgId, wParam, lParam](auto sub){
-            assert(sub);
-            sub->OnPublished(msgId, wParam, lParam);
-        });
+        while (!msg->second->empty())
+        {
+            (*msg->second->begin())->OnPublished(msgId, wParam, lParam);
+        }
     }
 }

@@ -4,30 +4,29 @@
 #include <stdarg.h>
 #include <iostream>
 #include <boost/filesystem.hpp>
+#include "pg_buffer.h"
 
 namespace PG {
     log::log() :
-        m_quit(false), m_bInited(false), m_writeThread(log::WriterThread, this)
+        m_WriteThrd(log::WriterThread, this), m_bQuit(false)
     {
-        m_logs.reserve(sCacheSize);
     }
 
     log::~log()
     {
-        // check if all the log has been stored in file
+        std::unique_lock<decltype(m_LogMutex)> locker(m_LogMutex);
+        m_LogCond.wait(locker, [this] {
+            return this->m_Logs.empty();
+        });
+
+        m_bQuit = true;
+        m_LogCond.notify_one();
+
+        if (m_FileStream.is_open())
         {
-            std::unique_lock<std::mutex> lock(m_writer_mutex);
-            m_writer_condition.wait(lock, [this] {
-                return m_logs.empty();
-            });
-            m_quit = true;
+            m_FileStream.close();
+            m_FileStream.flush();
         }
-
-        // notify writerthread
-        m_writer_condition.notify_one();
-
-        if (m_writeThread.joinable())
-            m_writeThread.join();
     }
 
     log & log::Instance()
@@ -36,56 +35,44 @@ namespace PG {
         return sInstance;
     }
 
-    bool log::Initlize(const std::string& file_path, int cache_size /* = sCacheSize */)
+    bool log::SetLogFile(const std::string & file_path)
     {
-        assert(cache_size);
-        if (m_bInited)
+        if (m_FileStream.is_open())
             return true;
 
-        m_bInited = true;
-
-        std::lock_guard<std::mutex> locker(m_writer_mutex);
-
-        m_logs.reserve(cache_size);
-        m_fileHandle.open(file_path, std::ios::app);
-
-        return m_fileHandle.is_open();
+        m_FileStream.open(file_path, std::ios::app);
+        return m_FileStream.is_open();
     }
 
     void log::Output(const char *pModule, const char *file_path, int line, const char* levelInfo, const char *pFormat, ...)
     {
         assert(file_path && pFormat && levelInfo);
-
-        {
-            std::lock_guard<std::mutex> lock(m_writer_mutex);
-            assert(!m_quit);
-        }
-
-        char log[sMaxLineLength];
-
-        namespace boost_fs = boost::filesystem;
+        static const uint16_t content_size = 512;
+        static const uint16_t content_num  = 12;
         try
         {
-            boost_fs::path full_path(file_path, boost_fs::native);
-            assert(boost_fs::is_regular_file(full_path) && boost_fs::exists(full_path));
+            thread_local TLSContainer Buffer;
 
-            auto head_len = sprintf_s(log, sMaxHeadLength, "%s-%s-%d",
-                levelInfo, full_path.filename().string().c_str(), line);
+            auto& buffer = Buffer.Lock4Write();
 
+            boost::filesystem::path full_path(file_path, boost::filesystem::native);
+            assert(boost::filesystem::is_regular_file(full_path) && boost::filesystem::exists(full_path));
+
+            auto head_len = sprintf_s(buffer.data(), sizeof(buffer), "[%s]: %s(%d) : ",levelInfo, full_path.filename().string().c_str(), line);
             va_list argp;
             va_start(argp, pFormat);
-            vsnprintf(&log[head_len], sMaxHeadLength - head_len, pFormat, argp);
+            vsnprintf(&buffer[head_len], sMaxHeadLength - head_len, pFormat, argp);
             va_end(argp);
 
-            std::lock_guard<std::mutex> lock(m_writer_mutex);
-            m_logs.push_back(log);
+            Buffer.Unlock(buffer);
 
-            if (m_logs.size() == m_logs.capacity())
-                m_writer_condition.notify_one();
+            std::lock_guard<decltype(m_LogMutex)> locker(m_LogMutex);
+            m_Logs.push_back(&Buffer);
+            m_LogCond.notify_one();
         }
-        catch (const boost_fs::filesystem_error& e)
+        catch (const std::exception &)
         {
-            (void)e;
+            return;
         }
     }
 
@@ -93,28 +80,31 @@ namespace PG {
     {
         assert(pInstance == &log::Instance());
 
-        while (1)
+        while (!pInstance->m_bQuit)
         {
-            std::unique_lock<std::mutex> lock(pInstance->m_writer_mutex);
-
-            pInstance->m_writer_condition.wait_for(lock, std::chrono::seconds(10), [&pInstance] {
-                return !pInstance->m_logs.empty() || pInstance->m_quit;
+            std::unique_lock<decltype(pInstance->m_LogMutex)> locker(pInstance->m_LogMutex);
+            pInstance->m_LogCond.wait(locker, [pInstance] {
+                return !pInstance->m_Logs.empty() || pInstance->m_bQuit;
             });
 
-            if (pInstance->m_logs.empty() && pInstance->m_quit)
-                break;
-
-            if (!pInstance->m_logs.empty())
+            while (!pInstance->m_Logs.empty())
             {
-                LogContainer logs(pInstance->m_logs);
-                pInstance->m_logs.clear();
-                lock.unlock();
+                auto log = *pInstance->m_Logs.begin();
+                locker.unlock();
 
-                // write log to file
-                std::ostream& stream = pInstance->m_fileHandle.is_open() ? pInstance->m_fileHandle : std::cout;
-                for (auto log : logs)
-                    stream << log << std::endl;
+                assert(log->Size());
+
+                auto& stream = (pInstance->m_FileStream.is_open() ? pInstance->m_FileStream : std::cout);
+
+                auto& content = log->Lock4Read();
+
+                stream << content.data() << std::endl;
                 stream.flush();
+
+                log->Unlock(content);
+
+                locker.lock();
+                pInstance->m_Logs.erase(pInstance->m_Logs.begin());
             }
         }
     }

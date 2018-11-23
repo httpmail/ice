@@ -45,7 +45,7 @@ namespace STUN {
             return m_AttrLength + sStunHeaderLength;
         }
 
-        const ATTR::Header* GetAttributes(ATTR::Id id) const
+        const ATTR::Header* GetAttribute(ATTR::Id id) const
         {
             auto itor = m_Attributes.find(id);
             return itor == m_Attributes.end() ? nullptr : reinterpret_cast<const ATTR::Header*>(&m_StunPacket.Attributes()[itor->second]);
