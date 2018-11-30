@@ -51,9 +51,9 @@ namespace PG {
         static const uint16_t content_num  = 12;
         try
         {
-            thread_local TLSContainer Buffer;
+            thread_local std::shared_ptr<TLSContainer> Buffer(new TLSContainer);
 
-            auto& buffer = Buffer.Lock4Write();
+            auto& buffer = Buffer->Lock4Write();
 
             boost::filesystem::path full_path(file_path, boost::filesystem::native);
             assert(boost::filesystem::is_regular_file(full_path) && boost::filesystem::exists(full_path));
@@ -64,10 +64,10 @@ namespace PG {
             vsnprintf(&buffer[head_len], sMaxHeadLength - head_len, pFormat, argp);
             va_end(argp);
 
-            Buffer.Unlock(buffer);
+            Buffer->Unlock(buffer);
 
             std::lock_guard<decltype(m_LogMutex)> locker(m_LogMutex);
-            m_Logs.push_back(&Buffer);
+            m_Logs.push_back(Buffer);
             m_LogCond.notify_one();
         }
         catch (const std::exception &)
