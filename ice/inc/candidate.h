@@ -12,13 +12,22 @@ namespace ICE {
 
     class Candidate {
     public:
-        Candidate();
+        enum class type_ref : uint8_t{
+            /*5.1.2.2.  Guidelines for Choosing Type and Local Preferences*/
+            server_reflexive = 100,
+            relayed = 0,
+            host = 126,
+            peer_reflexive = 110,
+        };
+    public:
+        Candidate(type_ref eTypeRef, uint8_t comp_id, uint16_t localRef, uint64_t tiebreaker);
+
         virtual ~Candidate();
 
     public:
         virtual bool Create(const std::string& local, uint16_t port) = 0;
         virtual bool Gather(const std::string& remote, uint16_t port) = 0;
-        virtual bool CheckConnectivity() = 0;
+        virtual bool CheckConnectivity(const std::string& remote, uint16_t port, const std::string& key, const std::string& username) = 0;
 
     protected:
         template<class T>
@@ -107,10 +116,20 @@ namespace ICE {
         bool Unsubscribe(PG::Subscriber* subscriber);
 
     protected:
-        Channel *m_pChannel;
+        Channel       *m_pChannel;
+        bool           m_bControlling;
+        const type_ref m_TypeRef;
+        const uint8_t  m_ComponentId;
+        const uint16_t m_LocalRef;
+        const uint32_t m_Priority;
+        const uint64_t m_Tiebreaker;
 
     private:
-        static void RecvThread(Candidate* pThis);
+        static void         RecvThread(Candidate* pThis);
+        static uint32_t     FormulaPriority(type_ref type, uint32_t localPref, uint8_t comp_id)
+        {
+            return ((static_cast<uint8_t>(type) & 0xFF) << 24) + ((localPref & 0xFFFF) << 8) + (((256 - comp_id) & 0xFF) << 0);
+        }
 
     private:
         static const uint8_t sMaxBindTimes = 5;
@@ -127,12 +146,12 @@ namespace ICE {
     ////////////////////////////// Host Candidate //////////////////////////////
     class HostCandidate : public Candidate {
     public:
-        using Candidate::Candidate;
+        HostCandidate(uint8_t comp_id, uint16_t localRef, uint64_t tiebreaker) : Candidate(type_ref::host, comp_id, localRef, tiebreaker) {}
 
     public:
         virtual bool Create(const std::string& local, uint16_t port) override;
         virtual bool Gather(const std::string&, uint16_t) override;
-        virtual bool CheckConnectivity();
+        virtual bool CheckConnectivity(const std::string& remote, uint16_t port, const std::string& key, const std::string& username) override;
     };
 
     ////////////////////////////// ActiveCandidate //////////////////////////////
@@ -142,7 +161,7 @@ namespace ICE {
 
     public:
         virtual bool Create(const std::string& local, uint16_t port) override;
-        virtual bool CheckConnectivity();
+        virtual bool CheckConnectivity(const std::string& remote, uint16_t port, const std::string&key, const std::string& username) override;
     };
 
     ////////////////////////////// PassiveCandidate //////////////////////////////
@@ -152,18 +171,20 @@ namespace ICE {
 
     public:
         virtual bool Create(const std::string& local, uint16_t port) override;
-        virtual bool CheckConnectivity();
+        virtual bool CheckConnectivity(const std::string& remote, uint16_t port, const std::string&key, const std::string& username) override;
     };
 
     ////////////////////////////// SrflxCandidate //////////////////////////////
     class SrflxCandidate : public Candidate {
     public:
-        using Candidate::Candidate;
+        SrflxCandidate(uint8_t comp_id, uint16_t localRef, uint64_t tiebreaker)
+            : Candidate(type_ref::server_reflexive, comp_id, localRef, tiebreaker)
+        {}
 
     public:
         virtual bool Create(const std::string& local, uint16_t port) override;
         virtual bool Gather(const std::string& remote, uint16_t port) override;
-        virtual bool CheckConnectivity();
+        virtual bool CheckConnectivity(const std::string& remote, uint16_t port, const std::string&key, const std::string& username) override;
 
     private:
         std::string m_SrflxIP;

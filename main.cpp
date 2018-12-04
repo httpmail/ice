@@ -11,49 +11,49 @@
 
 #include <string>
 #include <atomic>
+#include <iostream>
 
 PG::FIFOBuffer<std::string, 10> Buffer;
 
 PG::CircularBuffer<char, 128, 1> CharBuffer;
 
+class A1 {
+public:
+    A1()
+    {
+        std::cout << "A1()" << std::endl;
+    }
+
+    ~A1()
+    {
+        std::cout << "~A1()" << std::endl;
+    }
+};
+
+std::vector < std::shared_ptr<A1> > A1V;
+std::mutex mutex;
+std::condition_variable cond;
+
 void WriteThread(int i)
 {
-
-    while (1)
-    {
-        LOG_INFO("Info","Thread [%d]", i);
-        std::this_thread::sleep_for(std::chrono::milliseconds(PG::GenerateRandom(100, 500)));
-    }
+    std::unique_lock<std::mutex> locker(mutex);
+    auto ret = cond.wait_for(locker, std::chrono::seconds(1000));
+    std::cout << "Print" << (ret == std::_Cv_status::no_timeout) << std::endl;
 }
 
 void ReaderThread()
 {
-    while (1)
-    {
-        std::cout << "reading... " << std::endl;
-        auto& elem = CharBuffer.Lock4Read();
-        std::cout << elem.data() << std::endl;
-        //CharBuffer.Unlock(elem);
-        std::this_thread::sleep_for(std::chrono::milliseconds(PG::GenerateRandom(200,500)));
-    }
 }
-
-struct A11111 {
-    int a;
-    int b;
-    int c;
-    int d;
-};
 
 int main() 
 {
-    PG::CircularBuffer<A11111, 12, 123> I;
-    auto& a = I.Lock4Write();
-    std::cout << sizeof(a[0]) << std::endl;
+    std::thread a = std::thread(WriteThread,1);
 
-    int *a1 = 0;
-    decltype(a1) b = a1;
-
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    cond.notify_one();
+    if (a.joinable())
+        a.join();
+    while (1);
     return 0;
 #if 0
     ICE::CAgent agent;

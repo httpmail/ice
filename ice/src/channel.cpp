@@ -101,6 +101,32 @@ namespace ICE {
         }
     }
 
+    std::string UDPChannel::IP() noexcept
+    {
+        try
+        {
+            return m_Socket.local_endpoint().address().to_string();
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("UDPChannel", "Get IP exception : %s", e.what());
+            return "";
+        }
+    }
+
+    uint16_t UDPChannel::Port() noexcept
+    {
+        try
+        {
+            return m_Socket.local_endpoint().port();
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("UDPChannel", "Get Port exception : %s", e.what());
+            return -1;
+        }
+    }
+
     //////////////////////// TCPChannel //////////////////////////////
     TCPChannel::TCPChannel(boost::asio::io_service& service) :
         m_Socket(service)
@@ -180,6 +206,32 @@ namespace ICE {
         catch (const boost::system::system_error &e)
         {
             LOG_ERROR("TCPChannel", "Read exception : %s", e.what());
+            return -1;
+        }
+    }
+
+    std::string TCPChannel::IP() noexcept
+    {
+        try
+        {
+            return m_Socket.local_endpoint().address().to_string();
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("TCPChannel", "Get IP exception : %s", e.what());
+            return "";
+        }
+    }
+
+    uint16_t TCPChannel::Port() noexcept
+    {
+        try
+        {
+            return m_Socket.local_endpoint().port();
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("TCPChannel", "Get Port exception : %s", e.what());
             return -1;
         }
     }

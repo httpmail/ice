@@ -9,7 +9,8 @@
 #include <assert.h>
 
 namespace ICE {
-    Session::Session()
+    Session::Session() :
+        m_Tiebreaker(PG::GenerateRandom64())
     {
     }
 

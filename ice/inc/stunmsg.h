@@ -79,6 +79,8 @@ namespace STUN {
 
         static void GenerateRFC5389TransationId(TransIdRef id);
         static void GenerateRFC3489TransationId(TransIdRef id);
+        static void ComputeSHA1(const MessagePacket &packet, const std::string& key, SHA1Ref sha1);
+        static bool VerifyMsgIntegrity(const MessagePacket &packet, const std::string& key);
 
     protected:
         using Attributes = std::unordered_map<ATTR::Id, int16_t>; /*key = attribute id,  value = index in StunPacket::m_Attrs */
@@ -121,6 +123,11 @@ namespace STUN {
         BindingErrRespMsg(const TransId &transId)
             : MessagePacket(MsgType::BindingErrResp, transId)
         {
+        }
+
+        void SetAttribute(uint16_t class_code, uint16_t error_code, const std::string& reason)
+        {
+            AddErrorCode(class_code, error_code, reason);
         }
     };
 
@@ -188,5 +195,10 @@ namespace STUN {
         using FirstBindRequestMsg::FirstBindRequestMsg;
     };
 
+    class RFC5389SubBindReqMsg : public SubBindRequestMsg {
+    public:
+        using SubBindRequestMsg::SubBindRequestMsg;
 
+        virtual ~RFC5389SubBindReqMsg() {}
+    };
 }

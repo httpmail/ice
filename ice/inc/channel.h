@@ -45,6 +45,8 @@ namespace ICE {
         virtual bool Bind(const std::string& ip, int16_t port) noexcept = 0;
         virtual int16_t Write(const void* buffer, int16_t size) noexcept = 0;
         virtual int16_t Read(void* buffer, int16_t size) noexcept = 0;
+        virtual std::string IP() noexcept = 0;
+        virtual uint16_t Port() noexcept = 0;
 
     protected:
         static boost::asio::io_service sIOService;
@@ -63,6 +65,8 @@ namespace ICE {
         virtual bool Bind(const std::string& ip, int16_t port) noexcept override;
         virtual int16_t Write(const void* buffer, int16_t size) noexcept override;
         virtual int16_t Read(void* buffer, int16_t size) noexcept override;
+        virtual std::string IP() noexcept override;
+        virtual uint16_t Port() noexcept override;
 
     private:
         boost::asio::ip::udp::socket    m_Socket;
@@ -81,6 +85,8 @@ namespace ICE {
         virtual bool Bind(const std::string& ip, int16_t port) noexcept override;
         virtual int16_t Write(const void* buffer, int16_t size) noexcept override final;
         virtual int16_t Read(void* buffer, int16_t size) noexcept override final;
+        virtual std::string IP() noexcept override;
+        virtual uint16_t Port() noexcept override;
 
     protected:
         boost::asio::ip::tcp::socket m_Socket;

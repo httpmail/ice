@@ -36,6 +36,18 @@ namespace ICE {
 
     private:
         std::thread m_gatherThrd;
+        std::string m_LocalUserFrag;
+        std::string m_LocalPassword;
+        std::string m_RemoteUserFrag;
+        std::string m_RemotePassword;
+        /*
+        An ICE agent MUST use the same number for
+        all Binding requests, for all streams, within an ICE session, unless
+        it has received a 487 response, in which case it MUST change the
+        number (Section 7.2.5.1).  The agent MAY change the number when an
+        ICE restart occurs.*/
+        uint64_t    m_Tiebreaker;
+        bool        m_bControlling;
 
         MediaContainer              m_Medias;
         HostCandidateContainer      m_HostCands;

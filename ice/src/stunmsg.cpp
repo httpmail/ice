@@ -332,6 +332,26 @@ namespace STUN {
         reinterpret_cast<uint64_t*>(&id)[1] = PG::host_to_network(PG::GenerateRandom64());
     }
 
+    void MessagePacket::ComputeSHA1(const MessagePacket & packet, const std::string & key,SHA1Ref sha1)
+    {
+    }
+
+    bool MessagePacket::VerifyMsgIntegrity(const MessagePacket & packet, const std::string & key)
+    {
+        if (!packet.GetAttribute(ATTR::Id::MessageIntegrity))
+            return false;
+
+        uint16_t data_len = packet.GetLength();
+        data_len -= 20 + 4; // length of MessageIntegrity attribute;
+
+        if (packet.GetAttribute(ATTR::Id::Fingerprint))
+        {
+            data_len -= 8; // length of Fingerprint attribute;
+        }
+
+        return true;
+    }
+
     ///////////////////////// Subsequent Bind Request Message ///////////////////////////////////
     SubBindRequestMsg::SubBindRequestMsg(uint32_t pri, const TransId & transId, const ATTR::Role &role) :
         MessagePacket(MsgType::BindingRequest, transId)

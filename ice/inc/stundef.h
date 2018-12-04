@@ -9,6 +9,8 @@
 #pragma pack(4)
 
 namespace STUN {
+    static const uint32_t sIcePWDLength = 22;  /*RFC5245 15.4*/
+    static const uint32_t sIceUfragLength = 4; /*RFC5245 15.4*/
     static const uint32_t sSHA1Size = 20;
     static const uint32_t sMagicCookie = 0x2112A442;
     static const uint16_t sIPv4PathMTU = 548;

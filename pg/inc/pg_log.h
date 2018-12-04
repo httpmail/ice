@@ -49,7 +49,7 @@ namespace PG {
         static const int sTLSCacheSize  = 256;
 
         using TLSContainer = PG::CircularBuffer<char, sMaxHeadLength, sTLSCacheSize>;
-        using LogContainer = std::vector<TLSContainer*>;
+        using LogContainer = std::vector<std::shared_ptr<TLSContainer>>;
 
     private:
         LogContainer            m_Logs;
