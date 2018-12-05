@@ -100,6 +100,8 @@ namespace ICE {
         }
 
     protected:
+        using TimeOutInterval = std::vector<uint32_t>;
+
         enum class InternalMsg {
             BindRequest,
             BindResp,
@@ -111,9 +113,48 @@ namespace ICE {
         };
 
     protected:
+        class CheckParam {
+        public:
+            CheckParam(const std::string& username, const std::string& pwd, uint64_t tiebreaker) :
+                m_Username(username), m_password(pwd), m_Tiebreaker(tiebreaker)
+            {
+
+            }
+
+            ~CheckParam() {}
+
+            const std::string& UserName() const
+            {
+                return m_Username;
+            }
+
+            const std::string& Password() const
+            {
+                return m_password;
+            }
+
+            const TimeOutInterval& Timeout() const
+            {
+                return m_Timeout;
+            }
+
+            const uint64_t& Tiebreaker() const
+            {
+                return m_Tiebreaker;
+            }
+
+        private:
+            const std::string m_Username;
+            const std::string m_password;
+            const uint64_t    m_Tiebreaker;
+            TimeOutInterval   m_Timeout;
+        };
+
+    protected:
         bool Subscribe(InternalMsg msg, PG::Subscriber* subscriber);
         bool Unsubscribe(InternalMsg msg, PG::Subscriber* subscriber);
         bool Unsubscribe(PG::Subscriber* subscriber);
+        bool ConnectivityCheck(const CheckParam& checkparam);
 
     protected:
         Channel       *m_pChannel;

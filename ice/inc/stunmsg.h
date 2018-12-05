@@ -45,16 +45,26 @@ namespace STUN {
             return m_AttrLength + sStunHeaderLength;
         }
 
-        const ATTR::Header* GetAttribute(ATTR::Id id) const
-        {
-            auto itor = m_Attributes.find(id);
-            return itor == m_Attributes.end() ? nullptr : reinterpret_cast<const ATTR::Header*>(&m_StunPacket.Attributes()[itor->second]);
-        }
-
         bool HasAttribute(ATTR::Id id) const
         {
             return m_Attributes.find(id) != m_Attributes.end();
         }
+
+        const ATTR::MappedAddress*    GetAttribute(const ATTR::MappedAddress*& mapAddr) const;
+        const ATTR::ChangeRequest*    GetAttribute(const ATTR::ChangeRequest*& changeReq) const;
+        const ATTR::XorMappedAddress* GetAttribute(const ATTR::XorMappedAddress*& xorMap) const;
+        const ATTR::Role*             GetAttribute(const ATTR::Role*& role) const;
+        const ATTR::Priority*         GetAttribute(const ATTR::Priority*& pri) const;
+        const ATTR::UseCandidate*     GetAttribute(const ATTR::UseCandidate*& useCan) const;
+        const ATTR::Software*         GetAttribute(const ATTR::Software*& software) const;
+        const ATTR::Realm*            GetAttribute(const ATTR::Realm*& realm) const;
+        const ATTR::Nonce*            GetAttribute(const ATTR::Nonce*& nonce) const;
+        const ATTR::Password*         GetAttribute(const ATTR::Password*& pwd) const;
+        const ATTR::UserName*         GetAttribute(const ATTR::UserName*& username) const;
+        const ATTR::MessageIntegrity* GetAttribute(const ATTR::MessageIntegrity*& msgIntegrity) const;
+        const ATTR::Fingerprint*      GetAttribute(const ATTR::Fingerprint*& figerprint) const;
+        const ATTR::UnknownAttributes* GetAttribute(const ATTR::UnknownAttributes*& unknowAttrs) const;
+
 
         void AddAttribute(const ATTR::MappedAddress &attr);
         void AddAttribute(const ATTR::ChangeRequest &attr);

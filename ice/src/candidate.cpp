@@ -39,6 +39,144 @@ bool ICE::Candidate::Unsubscribe(PG::Subscriber * subscriber)
     return m_InternalMsgPub.Unsubscribe(subscriber);
 }
 
+bool ICE::Candidate::ConnectivityCheck(const CheckParam & checkparam)
+{
+    using namespace STUN;
+    assert(m_pChannel);
+
+    class Checker : public PG::Subscriber {
+    public:
+        enum class Status{
+            waiting, /* waiting recv msg*/
+            timeout,
+            RecvBadReq,
+            Succeed,
+            Failed,
+            Quit
+        };
+
+    public:
+        Checker(const CheckParam& checkparam, bool bControlling) :
+            m_param(checkparam), m_Status(Status::waiting)
+        {
+        }
+
+        ~Checker()
+        {
+        }
+
+        Status WaitForStatus(uint32_t timeoutMS)
+        {
+            std::unique_lock<decltype(m_Mutex)> locker(m_Mutex);
+            auto ret = m_Cond.wait_for(locker, std::chrono::milliseconds(timeoutMS), [this] {
+                return this->m_Status != Status::waiting;
+            });
+
+            return !ret ? Status::timeout : m_Status;
+        }
+
+        void OnPublished(PG::MsgEntity::MSG_ID msgId, PG::MsgEntity::WPARAM wParam, PG::MsgEntity::LPARAM lParam)
+        {
+            InternalMsg msg_id = static_cast<InternalMsg>(msgId);
+            switch (msg_id)
+            {
+
+            case ICE::Candidate::InternalMsg::BindRequest:
+            {
+                BindingRequestMsg *pMsg = reinterpret_cast<BindingRequestMsg*>(wParam);
+                assert(pMsg);
+                HandleRequestMsg(*pMsg);
+            }
+                break;
+            case ICE::Candidate::InternalMsg::BindResp:
+            {
+                BindRespMsg *pMsg = reinterpret_cast<BindRespMsg*>(wParam);
+                assert(pMsg);
+                HandleResponseMsg(*pMsg);
+            }
+                break;
+            case ICE::Candidate::InternalMsg::BindErrResp:
+                break;
+
+            case ICE::Candidate::InternalMsg::Quit:
+                m_Status = Status::Quit;
+                m_Cond.notify_one();
+                break;
+
+            default:
+                break;
+            }
+        }
+
+    private:
+        void HandleRequestMsg(const BindingRequestMsg& requestMsg)
+        {
+            const ATTR::MessageIntegrity* pMsgIntegrity = nullptr;
+            const ATTR::UserName* pUserName = nullptr;
+
+            requestMsg.GetAttribute(pMsgIntegrity);
+            requestMsg.GetAttribute(pUserName);
+
+            /*
+             RFC5389 10.1.2.  Receiving a Request
+            */
+            if (!requestMsg.GetAttribute(pMsgIntegrity) && !requestMsg.GetAttribute(pUserName))
+            {
+                m_Status = Status::RecvBadReq;
+                m_Cond.notify_one();
+            }
+            else if (pUserName->Name() != m_param.UserName())
+            {
+                //m_ErrorCode = 401;
+                //m_Reason = "mismatched username";
+                m_Status = Status::RecvBadReq;
+                m_Cond.notify_one();
+            }
+            else if (!MessagePacket::VerifyMsgIntegrity(requestMsg, m_param.Password()))
+            {
+                //m_ErrorCode = 401;
+                //m_Reason = "mismatched message integrity";
+                m_Status = Status::RecvBadReq;
+                m_Cond.notify_one();
+            }
+            else
+            {
+                // Detecting and Repairing Role Conflicts
+                const ATTR::Role *pRole = nullptr;
+                assert(requestMsg.GetAttribute(pRole));
+            }
+        }
+
+        void HandleResponseMsg(const BindRespMsg& respMsg)
+        {
+            if (!MessagePacket::VerifyMsgIntegrity(respMsg, m_param.Password()))
+            {
+                /* RFC5389 10.1.3. Receiving a Response*/
+                LOG_WARNING("Candidate","ConnectivityCheck : mismatched MsgIntegrity, just discard this response");
+            }
+
+            /*RFC5389 7.3.3.  Processing a Success Response*/
+            const ATTR::XorMappedAddress* pXorMappAddr = nullptr;
+            if (!respMsg.GetAttribute(pXorMappAddr))
+            {
+
+            }
+        }
+
+        void HandleErrorResponseMsg()
+        {
+        }
+
+    private:
+        Status m_Status;  /* never set Status to 'timeout' */
+        std::mutex m_Mutex;
+        std::condition_variable m_Cond;
+        const CheckParam &m_param;
+    };
+
+    return true;
+}
+
 void ICE::Candidate::RecvThread(Candidate * pThis)
 {
     while (!pThis->m_bQuit)
@@ -72,205 +210,6 @@ bool ICE::HostCandidate::Gather(const std::string &, uint16_t)
 
 bool ICE::HostCandidate::CheckConnectivity(const std::string& remote, uint16_t port, const std::string& key, const std::string& username)
 {
-    /*
-     RFC8445 7.2.2.Forming Credentials
-     */
-    using namespace STUN;
-    UDPChannel *channel = dynamic_cast<UDPChannel*>(m_pChannel);
-    assert(channel);
-
-    if (!channel->BindRemote(remote, port))
-        return false;
-
-    // transation id
-    TransId transId;
-    MessagePacket::GenerateRFC5389TransationId(transId);
-
-    // role attribute;
-    ATTR::Role role(m_bControlling);
-    role.TieBreaker(m_Tiebreaker);
-
-    RFC5389SubBindReqMsg subMsg(m_Priority, transId, role);
-
-    /*RFC8445 
-     7.1.2.  USE-CANDIDATE
-     The controlling agent MUST include the USE-CANDIDATE attribute
-    */
-    if (m_bControlling)
-        subMsg.AddAttribute(STUN::ATTR::UseCandidate());
-
-    //user name attribute;
-    subMsg.AddUsername(username);
-
-    uint8_t retransmission_cnt = 9;
-
-    class MsgHelper : public PG::Subscriber {
-    public:
-        enum class Status {
-            timeout,
-            BindReqRecved,
-            BindRespRecved,
-            BindFailed,
-            BindSucceed,
-            quit,
-        };
-
-    public:
-        MsgHelper(const SubBindRequestMsg& msg, TransIdConstRef id, const std::string& username, const std::string& key) :
-            m_msg(msg),
-            m_transId(id),
-            m_ErrorCode(0),
-            m_Reason(""),
-            m_Username(username),m_Key(key)
-        {
-        }
-
-        void OnPublished(PG::MsgEntity::MSG_ID msgId, PG::MsgEntity::WPARAM wParam, PG::MsgEntity::LPARAM lParam)
-        {
-            InternalMsg msg_id = static_cast<InternalMsg>(msgId);
-
-            switch (msg_id)
-            {
-            case ICE::Candidate::InternalMsg::BindRequest:
-                {
-                    BindingRequestMsg *pMsg = reinterpret_cast<BindingRequestMsg*>(wParam);
-                    assert(pMsg);
-                    OnRecvBindRequest(*pMsg);
-                }
-                break;
-
-            case ICE::Candidate::InternalMsg::BindResp:
-                {
-                    BindRespMsg *pMsg = reinterpret_cast<BindRespMsg*>(wParam);
-                    assert(pMsg);
-                    OnRecvBindResponse(*pMsg);
-                }
-                break;
-
-            case ICE::Candidate::InternalMsg::BindErrResp:
-                break;
-
-            case ICE::Candidate::InternalMsg::Quit:
-                m_Status = Status::quit;
-                m_Condition.notify_one();
-                break;
-            default:
-                break;
-            }
-        }
-
-        Status WaitForResp(uint32_t timoutMs)
-        {
-            std::unique_lock<decltype(m_RecvRespMutex)> locker(m_RecvRespMutex);
-            auto ret = m_Condition.wait_for(locker, std::chrono::milliseconds(timoutMs));
-
-            return ret == std::_Cv_status::timeout ? Status::timeout : m_Status;
-        }
-
-    public:
-        void OnRecvBindRequest(const BindingRequestMsg & bindReqMsg)
-        {
-            const ATTR::MessageIntegrity* pMsgIntegrity = reinterpret_cast<const ATTR::MessageIntegrity*>(bindReqMsg.GetAttribute(STUN::ATTR::Id::MessageIntegrity));
-            const ATTR::UserName* pUserName = reinterpret_cast<const ATTR::UserName*>(bindReqMsg.GetAttribute(STUN::ATTR::Id::Username));
-            if (!pMsgIntegrity && !pUserName)
-            {
-                m_ErrorCode = 400;
-                m_Reason = "Bad Request";
-                m_Status = Status::BindReqRecved;
-                m_Condition.notify_one();
-            }
-            else if (pUserName->Name() != m_Username)
-            {
-                m_ErrorCode = 401;
-                m_Reason = "mismatched username";
-                m_Status = Status::BindReqRecved;
-                m_Condition.notify_one();
-            }
-            else if (!MessagePacket::VerifyMsgIntegrity(bindReqMsg, m_Key))
-            {
-                m_ErrorCode = 401;
-                m_Reason = "mismatched message integrity";
-                m_Status = Status::BindReqRecved;
-                m_Condition.notify_one();
-            }
-
-            const ATTR::XorMappedAddress* pXorMappedAddr = 
-                reinterpret_cast<const ATTR::XorMappedAddress*>(bindReqMsg.GetAttribute(STUN::ATTR::Id::XorMappedAddress));
-
-            if (!pXorMappedAddr)
-                m_Status = Status::BindFailed;
-            else
-            {
-                m_BindReqIP = pXorMappedAddr->IP();
-                m_BindReqPort = pXorMappedAddr->Port();
-            }
-        }
-
-        void OnRecvBindResponse(const BindRespMsg &bindResp)
-        {
-            /*RFC 10.1.3.  Receiving a Response*/
-            if (MessagePacket::VerifyMsgIntegrity(bindResp, m_Key))
-            {
-                m_ErrorCode = 0;
-                m_Reason = "";
-                m_Status = Status::BindRespRecved;
-                m_Condition.notify_one();
-            }
-        }
-
-        void OnRecvBindErrorResponse(const BindingErrRespMsg &errBindResp)
-        {
-        }
-
-    public:
-        std::mutex                  m_RecvRespMutex;
-        std::condition_variable     m_Condition;
-        Status                      m_Status;
-        uint16_t                    m_ErrorCode;
-        std::string                 m_Reason;
-        std::string                 m_BindReqIP;
-        uint16_t                    m_BindReqPort;
-        const SubBindRequestMsg    &m_msg;
-        const std::string          &m_Key;
-        const std::string          &m_Username;
-        TransIdConstRef             m_transId;
-    };
-
-    MsgHelper msgHelper(subMsg,transId,username,key);
-    Subscribe(InternalMsg::BindRequest, &msgHelper);
-    Subscribe(InternalMsg::BindResp, &msgHelper);
-    Subscribe(InternalMsg::BindErrResp, &msgHelper);
-    Subscribe(InternalMsg::Quit, &msgHelper);
-
-    while (retransmission_cnt--)
-    {
-        if (m_pChannel->Write(subMsg.GetData(), subMsg.GetLength()) <= 0)
-        {
-            LOG_ERROR("Candidate", "CheckConnectivity send bind Request failed");
-        }
-
-        auto status = msgHelper.WaitForResp(0);
-
-        switch (status)
-        {
-        case MsgHelper::Status::timeout:
-            break;
-
-        case MsgHelper::Status::BindReqRecved:
-            if (msgHelper.m_BindReqIP == remote && msgHelper.m_BindReqPort == port)
-
-        case MsgHelper::Status::BindRespRecved:
-            break;
-
-        case MsgHelper::Status::BindFailed:
-        case MsgHelper::Status::quit:
-            return false;
-
-        default:
-            break;
-        }
-    }
-
     return true;
 }
 
@@ -300,13 +239,15 @@ bool ICE::SrflxCandidate::Gather(const std::string & remote, uint16_t port)
     class MsgHelper : public PG::Subscriber {
     public:
         enum class Status{
-            timeout = 0,
+            waiting,
+            timeout,
             succeed,
             failed,
             quit
         };
     public:
-        MsgHelper()
+        MsgHelper() :
+            m_Status(Status::waiting)
         {
         }
 
@@ -320,12 +261,11 @@ bool ICE::SrflxCandidate::Gather(const std::string & remote, uint16_t port)
             case ICE::Candidate::InternalMsg::BindResp:
                 {
                     STUN::BindingRespMsg *pMsg = reinterpret_cast<STUN::BindingRespMsg*>(wParam);
-                    auto attr = pMsg->GetAttribute(STUN::ATTR::Id::XorMappedAddress);
-                    assert(attr);
+                    const STUN::ATTR::XorMappedAddress *pXormapAddr = nullptr;
+                    assert(pMsg->GetAttribute(pXormapAddr));
 
-                    const STUN::ATTR::XorMappedAddress *address = reinterpret_cast<const decltype(address)>(attr);
-                    m_IP = address->IP();
-                    m_Port = address->Port();
+                    m_IP = pXormapAddr->IP();
+                    m_Port = pXormapAddr->Port();
                     m_Condition.notify_one();
                 }
                 break;
@@ -348,9 +288,11 @@ bool ICE::SrflxCandidate::Gather(const std::string & remote, uint16_t port)
         Status WaitBindResp(uint32_t timoutMs)
         {
             std::unique_lock<decltype(m_RecvRespMutex)> locker(m_RecvRespMutex);
-            auto ret = m_Condition.wait_for(locker, std::chrono::milliseconds(timoutMs));
+            auto ret = m_Condition.wait_for(locker, std::chrono::milliseconds(timoutMs), [this] {
+                return this->m_Status != Status::waiting;
+            });
 
-            return ret == std::cv_status::no_timeout ? m_Status : Status::timeout;
+            return ret == false ? Status::timeout : m_Status;
         }
 
     public:

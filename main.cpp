@@ -45,16 +45,24 @@ void ReaderThread()
 {
 }
 
+int *x = new int;
+void Get(const int*& p)
+{
+    std::cout << x << std::endl;
+    *x = 1;
+    p = x;
+}
+
 int main() 
 {
-    std::thread a = std::thread(WriteThread,1);
 
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    cond.notify_one();
-    if (a.joinable())
-        a.join();
-    while (1);
-    return 0;
+    const int *p = nullptr;
+    Get(p);
+
+    p = nullptr;
+
+    std::cout << x << std::endl;
+
 #if 0
     ICE::CAgent agent;
     ICE::CAgentConfig config;

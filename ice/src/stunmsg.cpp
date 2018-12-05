@@ -338,13 +338,16 @@ namespace STUN {
 
     bool MessagePacket::VerifyMsgIntegrity(const MessagePacket & packet, const std::string & key)
     {
-        if (!packet.GetAttribute(ATTR::Id::MessageIntegrity))
+        const ATTR::MessageIntegrity *pMsgIntegrity = nullptr;
+
+        if (!packet.GetAttribute(pMsgIntegrity))
             return false;
 
         uint16_t data_len = packet.GetLength();
         data_len -= 20 + 4; // length of MessageIntegrity attribute;
 
-        if (packet.GetAttribute(ATTR::Id::Fingerprint))
+        const ATTR::Fingerprint *pFingerprint = nullptr;
+        if (packet.GetAttribute(pFingerprint))
         {
             data_len -= 8; // length of Fingerprint attribute;
         }
@@ -367,6 +370,135 @@ namespace STUN {
     BindRespMsg::BindRespMsg(const TransId& transId) :
         MessagePacket(MsgType::BindingResp,transId)
     {
+    }
+
+    const ATTR::MappedAddress* MessagePacket::GetAttribute(const ATTR::MappedAddress *& mapAddr) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::MappedAddress);
+        mapAddr = (itor == m_Attributes.end()) ? 
+            nullptr : reinterpret_cast<const ATTR::MappedAddress*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return mapAddr;
+    }
+
+    const ATTR::ChangeRequest* MessagePacket::GetAttribute(const ATTR::ChangeRequest *& changeReq) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::ChangeRequest);
+        changeReq = (itor == m_Attributes.end()) ? 
+            nullptr : reinterpret_cast<const ATTR::ChangeRequest*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return changeReq;
+    }
+
+    const ATTR::XorMappedAddress* MessagePacket::GetAttribute(const ATTR::XorMappedAddress *& xorMap) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::XorMappedAddress);
+        xorMap = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::XorMappedAddress*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return xorMap;
+    }
+
+    const ATTR::Role* MessagePacket::GetAttribute(const ATTR::Role *& role) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::IceControlled);
+        if (itor == m_Attributes.end())
+            itor = m_Attributes.find(ATTR::Id::IceControlling);
+
+        role = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::Role*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return role;
+    }
+
+    const ATTR::Priority* MessagePacket::GetAttribute(const ATTR::Priority *& pri) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::Priority);
+        pri = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::Priority*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return pri;
+    }
+
+    const ATTR::UseCandidate* MessagePacket::GetAttribute(const ATTR::UseCandidate *& useCan) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::UseCandidate);
+        useCan = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::UseCandidate*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return useCan;
+    }
+
+    const ATTR::Software* MessagePacket::GetAttribute(const ATTR::Software *& software) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::Software);
+        software = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::Software*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return software;
+    }
+
+    const ATTR::Realm* MessagePacket::GetAttribute(const ATTR::Realm *& realm) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::Realm);
+        realm = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::Realm*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return realm;
+    }
+
+    const ATTR::Nonce* MessagePacket::GetAttribute(const ATTR::Nonce *& nonce) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::Nonce);
+        nonce = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::Nonce*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return nonce;
+    }
+
+    const ATTR::Password* MessagePacket::GetAttribute(const ATTR::Password *& pwd) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::Password);
+        pwd = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::Password*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return pwd;
+    }
+
+    const ATTR::UserName* MessagePacket::GetAttribute(const ATTR::UserName *& username) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::Username);
+        username = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::UserName*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return username;
+    }
+
+    const ATTR::MessageIntegrity * MessagePacket::GetAttribute(const ATTR::MessageIntegrity *& msgIntegrity) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::MessageIntegrity);
+        msgIntegrity = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::MessageIntegrity*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return msgIntegrity;
+    }
+
+    const ATTR::Fingerprint * MessagePacket::GetAttribute(const ATTR::Fingerprint *& figerprint) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::Fingerprint);
+        figerprint = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::Fingerprint*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return figerprint;
+    }
+
+    const ATTR::UnknownAttributes* MessagePacket::GetAttribute(const ATTR::UnknownAttributes *& unknowAttrs) const
+    {
+        auto itor = m_Attributes.find(ATTR::Id::UnknownAttributes);
+        unknowAttrs = (itor == m_Attributes.end()) ?
+            nullptr : reinterpret_cast<const ATTR::UnknownAttributes*>(&m_StunPacket.Attributes()[itor->second]);
+
+        return unknowAttrs;
     }
 }
 

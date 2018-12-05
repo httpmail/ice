@@ -17,6 +17,58 @@ namespace ICE {
     class Session
     {
     public:
+        class SessionConfig {
+        public:
+            SessionConfig(uint64_t tiebreak, const std::string& localFrag, const std::string& localPwd) :
+                m_Tiebreaker(tiebreak), m_LocalUserFrag(localFrag), m_LocalUserPwd(localPwd)
+            {
+            }
+
+            ~SessionConfig()
+            {
+            }
+
+        public:
+            const std::string GetConnectivityCheckUsername() const
+            {
+                return m_RemoteUserFrag + ":" + m_LocalUserFrag;
+            }
+
+            const std::string GetConnectivityCheckPassword() const
+            {
+                return m_RemoteUserPwd;
+            }
+
+            void RemoteUserFrag(const std::string& remoteUserFrag)
+            {
+                m_RemoteUserFrag = remoteUserFrag;
+            }
+            const std::string& RemoteUserFrag() const
+            {
+                return m_RemoteUserFrag;
+            }
+
+            void RemoteUserPassword(const std::string& remoteUserPwd)
+            {
+                m_RemoteUserPwd = remoteUserPwd;
+            }
+            const std::string& RemoteUserPassword() const
+            {
+                return m_RemoteUserPwd;
+            }
+
+        private:
+            /* rfc5245 15.4 */
+            std::string m_LocalUserFrag;
+            std::string m_LocalUserPwd;
+            std::string m_RemoteUserFrag;
+            std::string m_RemoteUserPwd;
+
+            bool m_bControlling;
+            const uint64_t m_Tiebreaker; /* rfc8445 16.1 */
+        };
+
+    public:
         Session();
         virtual ~Session();
 
@@ -36,19 +88,7 @@ namespace ICE {
 
     private:
         std::thread m_gatherThrd;
-        std::string m_LocalUserFrag;
-        std::string m_LocalPassword;
-        std::string m_RemoteUserFrag;
-        std::string m_RemotePassword;
-        /*
-        An ICE agent MUST use the same number for
-        all Binding requests, for all streams, within an ICE session, unless
-        it has received a 487 response, in which case it MUST change the
-        number (Section 7.2.5.1).  The agent MAY change the number when an
-        ICE restart occurs.*/
-        uint64_t    m_Tiebreaker;
-        bool        m_bControlling;
-
+        SessionConfig m_Config;
         MediaContainer              m_Medias;
         HostCandidateContainer      m_HostCands;
         SrflxCandidateContainer     m_SrflxCands;
