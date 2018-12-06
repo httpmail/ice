@@ -9,6 +9,7 @@
 #pragma pack(4)
 
 namespace STUN {
+    static const char* sSoftWareInfo = "Software 1.0.0";
     static const uint32_t sIcePWDLength = 22;  /*RFC5245 15.4*/
     static const uint32_t sIceUfragLength = 4; /*RFC5245 15.4*/
     static const uint32_t sSHA1Size = 20;
@@ -560,18 +561,14 @@ namespace STUN {
 
         class Role : public Header {
         public:
-            Role(bool bControlling) :
-                Header(bControlling ? Id::IceControlling : Id::IceControlled, 8)
+            Role(bool bControlling, uint64_t tiebreaker) :
+                Header(bControlling ? Id::IceControlling : Id::IceControlled, 8),
+                m_Tiebreaker(PG::host_to_network(tiebreaker))
             {}
 
             uint64_t TieBreaker() const
             {
                 return PG::network_to_host(m_Tiebreaker);
-            }
-
-            void TieBreaker(uint64_t tieBreaker)
-            {
-                m_Tiebreaker = PG::host_to_network(tieBreaker);
             }
 
         private:

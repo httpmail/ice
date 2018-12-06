@@ -7,6 +7,10 @@
 #include "pg_log.h"
 #include "stundef.h"
 
+namespace STUN {
+    class SubBindRequestMsg;
+}
+
 namespace ICE {
     class Channel;
 
@@ -113,48 +117,13 @@ namespace ICE {
         };
 
     protected:
-        class CheckParam {
-        public:
-            CheckParam(const std::string& username, const std::string& pwd, uint64_t tiebreaker) :
-                m_Username(username), m_password(pwd), m_Tiebreaker(tiebreaker)
-            {
-
-            }
-
-            ~CheckParam() {}
-
-            const std::string& UserName() const
-            {
-                return m_Username;
-            }
-
-            const std::string& Password() const
-            {
-                return m_password;
-            }
-
-            const TimeOutInterval& Timeout() const
-            {
-                return m_Timeout;
-            }
-
-            const uint64_t& Tiebreaker() const
-            {
-                return m_Tiebreaker;
-            }
-
-        private:
-            const std::string m_Username;
-            const std::string m_password;
-            const uint64_t    m_Tiebreaker;
-            TimeOutInterval   m_Timeout;
-        };
-
-    protected:
         bool Subscribe(InternalMsg msg, PG::Subscriber* subscriber);
         bool Unsubscribe(InternalMsg msg, PG::Subscriber* subscriber);
         bool Unsubscribe(PG::Subscriber* subscriber);
-        bool ConnectivityCheck(const CheckParam& checkparam);
+        bool ConnectivityCheck(const STUN::SubBindRequestMsg& bindMsg,
+            const TimeOutInterval &timeout,
+            const std::string& username,
+            const std::string& password);
 
     protected:
         Channel       *m_pChannel;
@@ -230,5 +199,17 @@ namespace ICE {
     private:
         std::string m_SrflxIP;
         uint16_t    m_SrflxPort;
+    };
+}
+
+
+namespace STUN {
+    class Candidate {
+    public:
+        Candidate();
+        virtual ~Candidate();
+
+    private:
+        const uint32_t m_PRI;
     };
 }

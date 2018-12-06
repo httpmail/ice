@@ -35,6 +35,11 @@ namespace STUN {
             return 0 == memcmp(other.m_StunPacket.TransId(), m_StunPacket.TransId(), sizeof(m_StunPacket.TransId()));
         }
 
+        TransIdConstRef TransationId() const
+        {
+            return m_StunPacket.TransId();
+        }
+
         const uint8_t* GetData() const
         {
             return reinterpret_cast<const uint8_t*>(&m_StunPacket);
@@ -48,6 +53,10 @@ namespace STUN {
         bool HasAttribute(ATTR::Id id) const
         {
             return m_Attributes.find(id) != m_Attributes.end();
+        }
+        bool HasUnknownAttributes() const
+        {
+            return m_UnsupportedAttrs.size() > 0;
         }
 
         const ATTR::MappedAddress*    GetAttribute(const ATTR::MappedAddress*& mapAddr) const;
@@ -187,8 +196,22 @@ namespace STUN {
 
     class BindRespMsg : public MessagePacket {
     public:
-        BindRespMsg(const TransId& transId);
+        BindRespMsg(const TransId& transId) :
+            MessagePacket(STUN::MsgType::BindingResp, transId)
+        {
+        }
+
         virtual ~BindRespMsg() = 0 {}
+    };
+
+    class BindErrorRespMsg : public MessagePacket {
+    public:
+        BindErrorRespMsg(const TransId& transId) :
+            MessagePacket(STUN::MsgType::BindingErrResp, transId)
+        {
+        }
+
+        virtual ~BindErrorRespMsg() = 0 {}
     };
 
     class RFC53891stBindRequestMsg : public FirstBindRequestMsg {
@@ -210,5 +233,28 @@ namespace STUN {
         using SubBindRequestMsg::SubBindRequestMsg;
 
         virtual ~RFC5389SubBindReqMsg() {}
+    };
+
+    class RFC5389BindRespMsg : public BindRespMsg {
+    public:
+        RFC5389BindRespMsg(TransIdConstRef id, const ATTR::XorMappedAddress& address) :
+            BindRespMsg(id)
+        {
+            AddAttribute(address);
+        }
+
+        virtual ~RFC5389BindRespMsg() {}
+
+    };
+
+    class RFC5389BindErrorRespMsg : public BindErrorRespMsg {
+    public:
+        RFC5389BindErrorRespMsg(TransIdConstRef id, uint8_t classCode, uint8_t number, const std::string& reason) : 
+            BindErrorRespMsg(id)
+        {
+            AddErrorCode(classCode, number, reason);
+        }
+
+        virtual ~RFC5389BindErrorRespMsg() {}
     };
 }

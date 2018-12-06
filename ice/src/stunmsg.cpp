@@ -332,50 +332,10 @@ namespace STUN {
         reinterpret_cast<uint64_t*>(&id)[1] = PG::host_to_network(PG::GenerateRandom64());
     }
 
-    void MessagePacket::ComputeSHA1(const MessagePacket & packet, const std::string & key,SHA1Ref sha1)
-    {
-    }
-
-    bool MessagePacket::VerifyMsgIntegrity(const MessagePacket & packet, const std::string & key)
-    {
-        const ATTR::MessageIntegrity *pMsgIntegrity = nullptr;
-
-        if (!packet.GetAttribute(pMsgIntegrity))
-            return false;
-
-        uint16_t data_len = packet.GetLength();
-        data_len -= 20 + 4; // length of MessageIntegrity attribute;
-
-        const ATTR::Fingerprint *pFingerprint = nullptr;
-        if (packet.GetAttribute(pFingerprint))
-        {
-            data_len -= 8; // length of Fingerprint attribute;
-        }
-
-        return true;
-    }
-
-    ///////////////////////// Subsequent Bind Request Message ///////////////////////////////////
-    SubBindRequestMsg::SubBindRequestMsg(uint32_t pri, const TransId & transId, const ATTR::Role &role) :
-        MessagePacket(MsgType::BindingRequest, transId)
-    {
-        ATTR::Priority Pri;
-        Pri.Pri(pri);
-
-        AddAttribute(Pri);
-        AddAttribute(role);
-    }
-
-    ///////////////////////// Bind Resp Message //////////////////////////////////////////////////
-    BindRespMsg::BindRespMsg(const TransId& transId) :
-        MessagePacket(MsgType::BindingResp,transId)
-    {
-    }
-
     const ATTR::MappedAddress* MessagePacket::GetAttribute(const ATTR::MappedAddress *& mapAddr) const
     {
         auto itor = m_Attributes.find(ATTR::Id::MappedAddress);
-        mapAddr = (itor == m_Attributes.end()) ? 
+        mapAddr = (itor == m_Attributes.end()) ?
             nullptr : reinterpret_cast<const ATTR::MappedAddress*>(&m_StunPacket.Attributes()[itor->second]);
 
         return mapAddr;
@@ -384,7 +344,7 @@ namespace STUN {
     const ATTR::ChangeRequest* MessagePacket::GetAttribute(const ATTR::ChangeRequest *& changeReq) const
     {
         auto itor = m_Attributes.find(ATTR::Id::ChangeRequest);
-        changeReq = (itor == m_Attributes.end()) ? 
+        changeReq = (itor == m_Attributes.end()) ?
             nullptr : reinterpret_cast<const ATTR::ChangeRequest*>(&m_StunPacket.Attributes()[itor->second]);
 
         return changeReq;
@@ -499,6 +459,40 @@ namespace STUN {
             nullptr : reinterpret_cast<const ATTR::UnknownAttributes*>(&m_StunPacket.Attributes()[itor->second]);
 
         return unknowAttrs;
+    }
+
+    void MessagePacket::ComputeSHA1(const MessagePacket & packet, const std::string & key,SHA1Ref sha1)
+    {
+    }
+
+    bool MessagePacket::VerifyMsgIntegrity(const MessagePacket & packet, const std::string & key)
+    {
+        const ATTR::MessageIntegrity *pMsgIntegrity = nullptr;
+
+        if (!packet.GetAttribute(pMsgIntegrity))
+            return false;
+
+        uint16_t data_len = packet.GetLength();
+        data_len -= 20 + 4; // length of MessageIntegrity attribute;
+
+        const ATTR::Fingerprint *pFingerprint = nullptr;
+        if (packet.GetAttribute(pFingerprint))
+        {
+            data_len -= 8; // length of Fingerprint attribute;
+        }
+
+        return true;
+    }
+
+    ///////////////////////// Subsequent Bind Request Message ///////////////////////////////////
+    SubBindRequestMsg::SubBindRequestMsg(uint32_t pri, const TransId & transId, const ATTR::Role &role) :
+        MessagePacket(MsgType::BindingRequest, transId)
+    {
+        ATTR::Priority Pri;
+        Pri.Pri(pri);
+
+        AddAttribute(Pri);
+        AddAttribute(role);
     }
 }
 

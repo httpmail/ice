@@ -43,6 +43,7 @@ void WriteThread(int i)
 
 void ReaderThread()
 {
+    std::this_thread::get_id();
 }
 
 int *x = new int;

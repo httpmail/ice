@@ -73,6 +73,7 @@ namespace ICE {
         virtual ~Session();
 
         bool GatherCandidate(const CAgentConfig& config);
+        bool ConnectivityCheck();
 
     private:
         static void GatheringThread(Session *pOwn, const CAgentConfig& config);

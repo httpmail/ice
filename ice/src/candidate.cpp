@@ -39,40 +39,59 @@ bool ICE::Candidate::Unsubscribe(PG::Subscriber * subscriber)
     return m_InternalMsgPub.Unsubscribe(subscriber);
 }
 
-bool ICE::Candidate::ConnectivityCheck(const CheckParam & checkparam)
+bool ICE::Candidate::ConnectivityCheck(const STUN::SubBindRequestMsg& bindMsg,
+                                       const TimeOutInterval &timeout,
+                                       const std::string& username,
+                                       const std::string& password)
 {
     using namespace STUN;
     assert(m_pChannel);
 
     class Checker : public PG::Subscriber {
-    public:
-        enum class Status{
-            waiting, /* waiting recv msg*/
-            timeout,
-            RecvBadReq,
-            Succeed,
-            Failed,
-            Quit
+    private:
+        enum class Status {
+            waiting,
+            failed,
+            succeed,
+            quit,
         };
 
     public:
-        Checker(const CheckParam& checkparam, bool bControlling) :
-            m_param(checkparam), m_Status(Status::waiting)
+        Checker(Candidate *pOwner, const SubBindRequestMsg& msg, const std::string& username, const std::string& password) :
+            m_pOwner(pOwner), m_ReqMsg(msg),m_Username(username),m_Password(password)
         {
+            assert(pOwner);
+            assert(pOwner->m_pChannel);
+
+            m_pOwner->Subscribe(InternalMsg::BindRequest, this);
+            m_pOwner->Subscribe(InternalMsg::BindResp, this);
+            m_pOwner->Subscribe(InternalMsg::BindErrResp, this);
         }
 
         ~Checker()
         {
+            m_pOwner->Unsubscribe(this);
         }
 
-        Status WaitForStatus(uint32_t timeoutMS)
+        bool DoChecking(const TimeOutInterval &timeout)
         {
-            std::unique_lock<decltype(m_Mutex)> locker(m_Mutex);
-            auto ret = m_Cond.wait_for(locker, std::chrono::milliseconds(timeoutMS), [this] {
-                return this->m_Status != Status::waiting;
-            });
+            for (auto itor = timeout.begin(); itor != timeout.end(); ++itor)
+            {
+                if (!SendPacket(m_ReqMsg))
+                {
+                    LOG_ERROR("Candidate", "Cannot send Bind Request Message");
+                    return false;
+                }
 
-            return !ret ? Status::timeout : m_Status;
+                std::unique_lock<decltype(m_Mutex)> locker(m_Mutex);
+                if (true == m_Cond.wait_for(locker, std::chrono::milliseconds(*itor), [this] {
+                    return this->m_Status != Status::waiting;}))
+                {
+                    return m_Status == Status::succeed ? true : false;
+                }
+            }
+
+            return false;
         }
 
         void OnPublished(PG::MsgEntity::MSG_ID msgId, PG::MsgEntity::WPARAM wParam, PG::MsgEntity::LPARAM lParam)
@@ -87,19 +106,19 @@ bool ICE::Candidate::ConnectivityCheck(const CheckParam & checkparam)
                 assert(pMsg);
                 HandleRequestMsg(*pMsg);
             }
-                break;
+            break;
             case ICE::Candidate::InternalMsg::BindResp:
             {
                 BindRespMsg *pMsg = reinterpret_cast<BindRespMsg*>(wParam);
                 assert(pMsg);
                 HandleResponseMsg(*pMsg);
             }
-                break;
+            break;
             case ICE::Candidate::InternalMsg::BindErrResp:
                 break;
 
             case ICE::Candidate::InternalMsg::Quit:
-                m_Status = Status::Quit;
+                m_Status = Status::quit;
                 m_Cond.notify_one();
                 break;
 
@@ -122,44 +141,100 @@ bool ICE::Candidate::ConnectivityCheck(const CheckParam & checkparam)
             */
             if (!requestMsg.GetAttribute(pMsgIntegrity) && !requestMsg.GetAttribute(pUserName))
             {
-                m_Status = Status::RecvBadReq;
-                m_Cond.notify_one();
+                RFC5389BindErrorRespMsg errResp(m_ReqMsg.TransationId(), 4, 0, "Bad Request");
+                if (!SendPacket(errResp))
+                {
+                    LOG_ERROR("Candidate", "Send 400 error response, just discards the request");
+                }
             }
-            else if (pUserName->Name() != m_param.UserName())
+            else if (pUserName->Name() != m_Username)
             {
                 //m_ErrorCode = 401;
                 //m_Reason = "mismatched username";
-                m_Status = Status::RecvBadReq;
-                m_Cond.notify_one();
+                RFC5389BindErrorRespMsg errResp(m_ReqMsg.TransationId(), 4, 1, "username mismatch");
+                if (!SendPacket(errResp))
+                {
+                    LOG_ERROR("Candidate", "Send 401 username mismatch response error, just discards the request");
+                }
             }
-            else if (!MessagePacket::VerifyMsgIntegrity(requestMsg, m_param.Password()))
+            else if (!MessagePacket::VerifyMsgIntegrity(requestMsg, m_Password))
             {
-                //m_ErrorCode = 401;
-                //m_Reason = "mismatched message integrity";
-                m_Status = Status::RecvBadReq;
-                m_Cond.notify_one();
+                RFC5389BindErrorRespMsg errResp(m_ReqMsg.TransationId(), 4, 1, "MessageIntegrityMismatch");
+                if (!SendPacket(errResp))
+                {
+                    LOG_ERROR("Candidate", "Send 401 MessageIntegrity mismatch response error, just discards the request");
+                }
             }
             else
             {
-                // Detecting and Repairing Role Conflicts
+                /*
+                RFC8445
+                7.2.1.1.  Detecting and Repairing Role Conflicts
+                */
                 const ATTR::Role *pRole = nullptr;
                 assert(requestMsg.GetAttribute(pRole));
+
+                bool  bControllingReq = pRole->Type() == ATTR::Id::IceControlling;
+                if (m_pOwner->m_bControlling == bControllingReq)
+                {
+                    bool bBiggerTieBreaker = m_pOwner->m_Tiebreaker == pRole->TieBreaker();
+
+                    if ((bControllingReq && bBiggerTieBreaker) || (!bControllingReq && !bBiggerTieBreaker))
+                    {
+                        RFC5389BindErrorRespMsg errResp(m_ReqMsg.TransationId(), 4, 87, "RoleConflict");
+                        if (!SendPacket(errResp))
+                        {
+                            LOG_ERROR("Candidate", "Send 487 RoleConflict response error, just discards the request");
+                        }
+                    }
+                    else if ((bControllingReq && !bBiggerTieBreaker) || (!bControllingReq && bBiggerTieBreaker))
+                    {
+                        /*
+                            TODO should notify session to switch role, and then following 
+                            RFC8445 5.7.2. Computing Pair Priority and Ordering Pairs
+                        */
+                        m_Cond.notify_one();
+                    }
+                }
+                else
+                {
+                    ATTR::XorMappedAddress address;
+                    address.Address();
+                    address.Port();
+                    RFC5389BindRespMsg respMsg(m_ReqMsg.TransationId(), address);
+                    respMsg.AddSoftware("sSoftWareInfo");
+
+                    if (!SendPacket(respMsg))
+                    {
+                        LOG_ERROR("Candidate", "Send success response error, just discards the request");
+                    }
+                }
             }
         }
 
         void HandleResponseMsg(const BindRespMsg& respMsg)
         {
-            if (!MessagePacket::VerifyMsgIntegrity(respMsg, m_param.Password()))
+            const ATTR::XorMappedAddress* pXorMappAddr = nullptr;
+            if (!MessagePacket::VerifyMsgIntegrity(respMsg, m_Password))
             {
                 /* RFC5389 10.1.3. Receiving a Response*/
-                LOG_WARNING("Candidate","ConnectivityCheck : mismatched MsgIntegrity, just discard this response");
+                LOG_WARNING("Candidate","ConnectivityCheck : mismatched MsgIntegrity, just discards the response");
             }
-
-            /*RFC5389 7.3.3.  Processing a Success Response*/
-            const ATTR::XorMappedAddress* pXorMappAddr = nullptr;
-            if (!respMsg.GetAttribute(pXorMappAddr))
+            else if (respMsg.HasUnknownAttributes())
             {
-
+                /*RFC5389 7.3.3.  Processing a Success Response*/
+                LOG_WARNING("Candidate", "ConnectivityCheck : has unknown attributes, just discards the response");
+            }
+            else if(!respMsg.GetAttribute(pXorMappAddr))
+            {
+                    LOG_ERROR("Candidate", "ConnectivityCheck: Non-Symmetric Transport Addresses");
+                    m_Status = Status::failed;
+                    m_Cond.notify_one();
+            }
+            else
+            {
+                m_Status = Status::succeed;
+                m_Cond.notify_one();
             }
         }
 
@@ -167,13 +242,33 @@ bool ICE::Candidate::ConnectivityCheck(const CheckParam & checkparam)
         {
         }
 
+        bool SendPacket(const MessagePacket& packet)
+        {
+            assert(m_pOwner && m_pOwner->m_pChannel);
+            return m_pOwner->m_pChannel->Write(packet.GetData(), packet.GetLength()) > 0;
+        }
+
     private:
-        Status m_Status;  /* never set Status to 'timeout' */
-        std::mutex m_Mutex;
-        std::condition_variable m_Cond;
-        const CheckParam &m_param;
+        Candidate                  *m_pOwner;
+        std::mutex                  m_Mutex;
+        std::condition_variable     m_Cond;
+        std::atomic<Status>         m_Status;
+        const SubBindRequestMsg&    m_ReqMsg;
+        const std::string           m_Username;
+        const std::string           m_Password;
     };
 
+    Checker checker(this, bindMsg, username, password);
+
+    if (checker.DoChecking(timeout))
+    {
+        if (m_bControlling)
+        {
+        }
+        else
+        {
+        }
+    }
     return true;
 }
 
@@ -186,7 +281,6 @@ void ICE::Candidate::RecvThread(Candidate * pThis)
         {
             auto& packet = pThis->m_Packets.Lock4Write();
             auto bytes = pThis->m_pChannel->Read(packet.data(), sizeof(packet[0]));
-
             pThis->m_Packets.Unlock(packet, bytes <= 0);
         }
         catch (const std::exception& e)
