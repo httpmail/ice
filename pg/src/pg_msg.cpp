@@ -180,6 +180,8 @@ namespace PG {
     {
         assert(subscriber);
 
+        std::lock_guard<decltype(m_Mutex)> locker(m_Mutex);
+
         auto itor = m_Msg.find(msgId);
         if (itor == m_Msg.end())
         {
@@ -195,6 +197,7 @@ namespace PG {
     {
         assert(subscriber);
 
+        std::lock_guard<decltype(m_Mutex)> locker(m_Mutex);
         auto itor = m_Msg.find(msgId);
         if (itor == m_Msg.end())
         {
@@ -212,6 +215,7 @@ namespace PG {
     {
         assert(subscriber);
 
+        std::lock_guard<decltype(m_Mutex)> locker(m_Mutex);
         std::for_each(m_Msg.begin(), m_Msg.end(), [subscriber](auto& itor){
             itor.second->erase(subscriber);
         });
@@ -220,6 +224,7 @@ namespace PG {
 
     bool Publisher::RegisterMsg(MsgEntity::MSG_ID msgId)
     {
+        std::lock_guard<decltype(m_Mutex)> locker(m_Mutex);
         if (m_Msg.end() != m_Msg.find(msgId))
         {
             LOG_WARNING("Publisher", "msg :[%d] has been registered", msgId);
@@ -237,6 +242,7 @@ namespace PG {
 
     void Publisher::Publish(MsgEntity::MSG_ID msgId, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam)
     {
+        std::lock_guard<decltype(m_Mutex)> locker(m_Mutex);
         auto msg = m_Msg.find(msgId);
 
         if (msg == m_Msg.end())
@@ -247,9 +253,8 @@ namespace PG {
 
         assert(msg->second);
 
-        while (!msg->second->empty())
-        {
-            (*msg->second->begin())->OnPublished(msgId, wParam, lParam);
-        }
+        std::for_each(msg->second->begin(), msg->second->end(), [this, msgId, wParam, lParam](auto& itor) {
+            itor->OnPublished(this, msgId, wParam, lParam);
+        });
     }
 }

@@ -1,460 +1,49 @@
+
 #include "candidate.h"
-#include "stunmsg.h"
-#include "channel.h"
+#include <functional>
+#include <boost/function.hpp>
 
-ICE::Candidate::Candidate(type_ref eTypeRef, uint8_t comp_id, uint16_t localRef, uint64_t tiebreaker) :
-    m_TypeRef(eTypeRef), m_ComponentId(comp_id), m_LocalRef(localRef),
-    m_Priority(FormulaPriority(eTypeRef, m_LocalRef, comp_id)),
-    m_Tiebreaker(tiebreaker)
-{
-    using namespace PG;
-
-    m_InternalMsgPub.RegisterMsg(static_cast<MsgEntity::MSG_ID>(InternalMsg::BindRequest));
-    m_InternalMsgPub.RegisterMsg(static_cast<MsgEntity::MSG_ID>(InternalMsg::BindResp));
-    m_InternalMsgPub.RegisterMsg(static_cast<MsgEntity::MSG_ID>(InternalMsg::BindErrResp));
-    m_InternalMsgPub.RegisterMsg(static_cast<MsgEntity::MSG_ID>(InternalMsg::SSReq));
-    m_InternalMsgPub.RegisterMsg(static_cast<MsgEntity::MSG_ID>(InternalMsg::SSResp));
-    m_InternalMsgPub.RegisterMsg(static_cast<MsgEntity::MSG_ID>(InternalMsg::SSErrResp));
-}
-
-ICE::Candidate::~Candidate()
-{
-}
-
-bool ICE::Candidate::Subscribe(InternalMsg msg, PG::Subscriber * subscriber)
-{
-    std::lock_guard<decltype(m_InternalMsgMutex)> locker(m_InternalMsgMutex);
-    return m_InternalMsgPub.Subscribe(subscriber, static_cast<PG::MsgEntity::MSG_ID>(msg));
-}
-
-bool ICE::Candidate::Unsubscribe(InternalMsg msg, PG::Subscriber * subscriber)
-{
-    std::lock_guard<decltype(m_InternalMsgMutex)> locker(m_InternalMsgMutex);
-    return m_InternalMsgPub.Unsubscribe(subscriber, static_cast<PG::MsgEntity::MSG_ID>(msg));
-}
-
-bool ICE::Candidate::Unsubscribe(PG::Subscriber * subscriber)
-{
-    std::lock_guard<decltype(m_InternalMsgMutex)> locker(m_InternalMsgMutex);
-    return m_InternalMsgPub.Unsubscribe(subscriber);
-}
-
-bool ICE::Candidate::ConnectivityCheck(const STUN::SubBindRequestMsg& bindMsg,
-                                       const TimeOutInterval &timeout,
-                                       const std::string& username,
-                                       const std::string& password)
-{
-    using namespace STUN;
-    assert(m_pChannel);
-
-    class Checker : public PG::Subscriber {
-    private:
-        enum class Status {
-            waiting,
-            failed,
-            succeed,
-            quit,
-        };
-
-    public:
-        Checker(Candidate *pOwner, const SubBindRequestMsg& msg, const std::string& username, const std::string& password) :
-            m_pOwner(pOwner), m_ReqMsg(msg),m_Username(username),m_Password(password)
-        {
-            assert(pOwner);
-            assert(pOwner->m_pChannel);
-
-            m_pOwner->Subscribe(InternalMsg::BindRequest, this);
-            m_pOwner->Subscribe(InternalMsg::BindResp, this);
-            m_pOwner->Subscribe(InternalMsg::BindErrResp, this);
-        }
-
-        ~Checker()
-        {
-            m_pOwner->Unsubscribe(this);
-        }
-
-        bool DoChecking(const TimeOutInterval &timeout)
-        {
-            for (auto itor = timeout.begin(); itor != timeout.end(); ++itor)
-            {
-                if (!SendPacket(m_ReqMsg))
-                {
-                    LOG_ERROR("Candidate", "Cannot send Bind Request Message");
-                    return false;
-                }
-
-                std::unique_lock<decltype(m_Mutex)> locker(m_Mutex);
-                if (true == m_Cond.wait_for(locker, std::chrono::milliseconds(*itor), [this] {
-                    return this->m_Status != Status::waiting;}))
-                {
-                    return m_Status == Status::succeed ? true : false;
-                }
-            }
-
-            return false;
-        }
-
-        void OnPublished(PG::MsgEntity::MSG_ID msgId, PG::MsgEntity::WPARAM wParam, PG::MsgEntity::LPARAM lParam)
-        {
-            InternalMsg msg_id = static_cast<InternalMsg>(msgId);
-            switch (msg_id)
-            {
-
-            case ICE::Candidate::InternalMsg::BindRequest:
-            {
-                BindingRequestMsg *pMsg = reinterpret_cast<BindingRequestMsg*>(wParam);
-                assert(pMsg);
-                HandleRequestMsg(*pMsg);
-            }
-            break;
-            case ICE::Candidate::InternalMsg::BindResp:
-            {
-                BindRespMsg *pMsg = reinterpret_cast<BindRespMsg*>(wParam);
-                assert(pMsg);
-                HandleResponseMsg(*pMsg);
-            }
-            break;
-            case ICE::Candidate::InternalMsg::BindErrResp:
-                break;
-
-            case ICE::Candidate::InternalMsg::Quit:
-                m_Status = Status::quit;
-                m_Cond.notify_one();
-                break;
-
-            default:
-                break;
-            }
-        }
-
-    private:
-        void HandleRequestMsg(const BindingRequestMsg& requestMsg)
-        {
-            const ATTR::MessageIntegrity* pMsgIntegrity = nullptr;
-            const ATTR::UserName* pUserName = nullptr;
-
-            requestMsg.GetAttribute(pMsgIntegrity);
-            requestMsg.GetAttribute(pUserName);
-
-            /*
-             RFC5389 10.1.2.  Receiving a Request
-            */
-            if (!requestMsg.GetAttribute(pMsgIntegrity) && !requestMsg.GetAttribute(pUserName))
-            {
-                RFC5389BindErrorRespMsg errResp(m_ReqMsg.TransationId(), 4, 0, "Bad Request");
-                if (!SendPacket(errResp))
-                {
-                    LOG_ERROR("Candidate", "Send 400 error response, just discards the request");
-                }
-            }
-            else if (pUserName->Name() != m_Username)
-            {
-                //m_ErrorCode = 401;
-                //m_Reason = "mismatched username";
-                RFC5389BindErrorRespMsg errResp(m_ReqMsg.TransationId(), 4, 1, "username mismatch");
-                if (!SendPacket(errResp))
-                {
-                    LOG_ERROR("Candidate", "Send 401 username mismatch response error, just discards the request");
-                }
-            }
-            else if (!MessagePacket::VerifyMsgIntegrity(requestMsg, m_Password))
-            {
-                RFC5389BindErrorRespMsg errResp(m_ReqMsg.TransationId(), 4, 1, "MessageIntegrityMismatch");
-                if (!SendPacket(errResp))
-                {
-                    LOG_ERROR("Candidate", "Send 401 MessageIntegrity mismatch response error, just discards the request");
-                }
-            }
-            else
-            {
-                /*
-                RFC8445
-                7.2.1.1.  Detecting and Repairing Role Conflicts
-                */
-                const ATTR::Role *pRole = nullptr;
-                assert(requestMsg.GetAttribute(pRole));
-
-                bool  bControllingReq = pRole->Type() == ATTR::Id::IceControlling;
-                if (m_pOwner->m_bControlling == bControllingReq)
-                {
-                    bool bBiggerTieBreaker = m_pOwner->m_Tiebreaker == pRole->TieBreaker();
-
-                    if ((bControllingReq && bBiggerTieBreaker) || (!bControllingReq && !bBiggerTieBreaker))
-                    {
-                        RFC5389BindErrorRespMsg errResp(m_ReqMsg.TransationId(), 4, 87, "RoleConflict");
-                        if (!SendPacket(errResp))
-                        {
-                            LOG_ERROR("Candidate", "Send 487 RoleConflict response error, just discards the request");
-                        }
-                    }
-                    else if ((bControllingReq && !bBiggerTieBreaker) || (!bControllingReq && bBiggerTieBreaker))
-                    {
-                        /*
-                            TODO should notify session to switch role, and then following 
-                            RFC8445 5.7.2. Computing Pair Priority and Ordering Pairs
-                        */
-                        m_Cond.notify_one();
-                    }
-                }
-                else
-                {
-                    ATTR::XorMappedAddress address;
-                    address.Address();
-                    address.Port();
-                    RFC5389BindRespMsg respMsg(m_ReqMsg.TransationId(), address);
-                    respMsg.AddSoftware("sSoftWareInfo");
-
-                    if (!SendPacket(respMsg))
-                    {
-                        LOG_ERROR("Candidate", "Send success response error, just discards the request");
-                    }
-                }
-            }
-        }
-
-        void HandleResponseMsg(const BindRespMsg& respMsg)
-        {
-            const ATTR::XorMappedAddress* pXorMappAddr = nullptr;
-            if (!MessagePacket::VerifyMsgIntegrity(respMsg, m_Password))
-            {
-                /* RFC5389 10.1.3. Receiving a Response*/
-                LOG_WARNING("Candidate","ConnectivityCheck : mismatched MsgIntegrity, just discards the response");
-            }
-            else if (respMsg.HasUnknownAttributes())
-            {
-                /*RFC5389 7.3.3.  Processing a Success Response*/
-                LOG_WARNING("Candidate", "ConnectivityCheck : has unknown attributes, just discards the response");
-            }
-            else if(!respMsg.GetAttribute(pXorMappAddr))
-            {
-                    LOG_ERROR("Candidate", "ConnectivityCheck: Non-Symmetric Transport Addresses");
-                    m_Status = Status::failed;
-                    m_Cond.notify_one();
-            }
-            else
-            {
-                m_Status = Status::succeed;
-                m_Cond.notify_one();
-            }
-        }
-
-        void HandleErrorResponseMsg()
-        {
-        }
-
-        bool SendPacket(const MessagePacket& packet)
-        {
-            assert(m_pOwner && m_pOwner->m_pChannel);
-            return m_pOwner->m_pChannel->Write(packet.GetData(), packet.GetLength()) > 0;
-        }
-
-    private:
-        Candidate                  *m_pOwner;
-        std::mutex                  m_Mutex;
-        std::condition_variable     m_Cond;
-        std::atomic<Status>         m_Status;
-        const SubBindRequestMsg&    m_ReqMsg;
-        const std::string           m_Username;
-        const std::string           m_Password;
-    };
-
-    Checker checker(this, bindMsg, username, password);
-
-    if (checker.DoChecking(timeout))
+namespace STUN {
+    Candidate::Candidate(TypeRef eType, uint8_t compId, uint16_t localPref, bool bUDP,
+        const std::string & baseIP, uint16_t basePort,
+        const std::string & relatedIP, uint16_t relatedPort, const std::string& serverIP):
+        m_TypeRef(eType), m_CompId(compId),
+        m_IP(baseIP),m_Port(basePort), m_RelatedIP(relatedIP),m_RelatedPort(relatedPort),
+        m_Priority(ComputePriority(eType, localPref, compId)), m_Foundation(ComputeFoundations(eType, baseIP, serverIP, bUDP))
     {
-        if (m_bControlling)
-        {
-        }
-        else
-        {
-        }
-    }
-    return true;
-}
-
-void ICE::Candidate::RecvThread(Candidate * pThis)
-{
-    while (!pThis->m_bQuit)
-    {
-        assert(!pThis->m_pChannel);
-        try
-        {
-            auto& packet = pThis->m_Packets.Lock4Write();
-            auto bytes = pThis->m_pChannel->Read(packet.data(), sizeof(packet[0]));
-            pThis->m_Packets.Unlock(packet, bytes <= 0);
-        }
-        catch (const std::exception& e)
-        {
-            LOG_ERROR("Candidate", "Recv exception :%s", e.what());
-        }
-    }
-}
-
-
-////////////////////////////// Host Candidate //////////////////////////////
-bool ICE::HostCandidate::Create(const std::string & local, uint16_t port)
-{
-    return (m_pChannel = CreateChannel<UDPChannel>(local, port)) == nullptr;
-}
-
-bool ICE::HostCandidate::Gather(const std::string &, uint16_t)
-{
-    return m_pChannel != nullptr;
-}
-
-bool ICE::HostCandidate::CheckConnectivity(const std::string& remote, uint16_t port, const std::string& key, const std::string& username)
-{
-    return true;
-}
-
-////////////////////////////// ActiveCandidate //////////////////////////////
-bool ICE::ActiveCandidate::Create(const std::string & local, uint16_t port)
-{
-    return (m_pChannel = CreateChannel<TCPActiveChannel>(local, port)) == nullptr;
-}
-
-////////////////////////////// PassiveCandidate //////////////////////////////
-bool ICE::PassiveCandidate::Create(const std::string & local, uint16_t port)
-{
-    return (m_pChannel = CreateChannel<TCPPassiveChannel>(local, port)) == nullptr;
-}
-
-////////////////////////////// SrflxCandidate //////////////////////////////
-bool ICE::SrflxCandidate::Create(const std::string & local, uint16_t port)
-{
-    return (m_pChannel = CreateChannel<UDPChannel>(local, port)) == nullptr;
-}
-
-bool ICE::SrflxCandidate::Gather(const std::string & remote, uint16_t port)
-{
-    assert(m_pChannel);
-    using namespace STUN;
-
-    class MsgHelper : public PG::Subscriber {
-    public:
-        enum class Status{
-            waiting,
-            timeout,
-            succeed,
-            failed,
-            quit
-        };
-    public:
-        MsgHelper() :
-            m_Status(Status::waiting)
-        {
-        }
-
-        void OnPublished(PG::MsgEntity::MSG_ID msgId, PG::MsgEntity::WPARAM wParam, PG::MsgEntity::LPARAM lParam)
-        {
-            InternalMsg msg_id = static_cast<InternalMsg>(msgId);
-            LOG_INFO("SrflxCandidate", "1st Bind Request received Message [%d]", msg_id);
-
-            switch (msg_id)
-            {
-            case ICE::Candidate::InternalMsg::BindResp:
-                {
-                    STUN::BindingRespMsg *pMsg = reinterpret_cast<STUN::BindingRespMsg*>(wParam);
-                    const STUN::ATTR::XorMappedAddress *pXormapAddr = nullptr;
-                    assert(pMsg->GetAttribute(pXormapAddr));
-
-                    m_IP = pXormapAddr->IP();
-                    m_Port = pXormapAddr->Port();
-                    m_Condition.notify_one();
-                }
-                break;
-
-            case ICE::Candidate::InternalMsg::BindErrResp:
-                LOG_ERROR("SrflxCandidate", "1st Bind Request Received error bind response");
-                m_Status = Status::failed;
-                m_Condition.notify_one();
-                break;
-
-            case ICE::Candidate::InternalMsg::Quit:
-                m_Status = Status::quit;
-                m_Condition.notify_one();
-                break;
-            default:
-                break;
-            }
-        }
-
-        Status WaitBindResp(uint32_t timoutMs)
-        {
-            std::unique_lock<decltype(m_RecvRespMutex)> locker(m_RecvRespMutex);
-            auto ret = m_Condition.wait_for(locker, std::chrono::milliseconds(timoutMs), [this] {
-                return this->m_Status != Status::waiting;
-            });
-
-            return ret == false ? Status::timeout : m_Status;
-        }
-
-    public:
-        std::mutex                     m_RecvRespMutex;
-        std::condition_variable        m_Condition;
-        Status                         m_Status;
-        std::string                    m_IP;
-        uint16_t                       m_Port;
-        std::atomic_flag               m_bFlag;
-    };
-
-
-    TransId id;
-    MessagePacket::GenerateRFC5389TransationId(id);
-    RFC53891stBindRequestMsg bindMsg(id);
-
-    auto channel = dynamic_cast<UDPChannel*>(m_pChannel);
-    assert(channel);
-
-    if (!channel->BindRemote(remote, port))
-    {
-        LOG_ERROR("SrflxCandidate", "Bind Remote[%s:%d] error", remote.c_str(), port);
-        return false;
     }
 
-    MsgHelper msgHelper;
-    Subscribe(InternalMsg::BindErrResp, &msgHelper);
-    Subscribe(InternalMsg::BindRequest, &msgHelper);
-
-    bool bResult = false;
-
-    while (1)
+    uint32_t Candidate::ComputeFoundations(TypeRef type, const std::string & baseIP, const std::string & serverIP, bool bUDP)
     {
-        if(!m_pChannel->Write(bindMsg.GetData(), bindMsg.GetLength()))
+        char hashInfo[1024];
+
+        sprintf_s(hashInfo, sizeof(hashInfo), "%s%s%d%d", baseIP.c_str(), serverIP.c_str(), bUDP, type);
+
+        return std::hash<std::string>{}(hashInfo);
+    }
+
+    std::string Candidate::TypeName() const
+    {
+        /*
+         RFC5245
+         15.1.  "candidate" Attribute
+         */
+        switch (m_TypeRef)
         {
-            LOG_ERROR("SrflxCandidate", "Send 1st Bind Request Error");
-        }
-        auto status = msgHelper.WaitBindResp(0);
-        switch (status)
-        {
-        case MsgHelper::Status::timeout:
-            break;
-        case MsgHelper::Status::succeed:
-            break;
-        case MsgHelper::Status::failed:
-            break;
-        case MsgHelper::Status::quit:
-            break;
+        case TypeRef::host:
+            return "host";
+
+        case TypeRef::relayed:
+            return "relay";
+
+        case TypeRef::server_reflexive:
+            return "srflx";
+
+        case TypeRef::peer_reflexive:
+            return "prflx";
+
         default:
-            break;
-        }
-
-        if (MsgHelper::Status::timeout == status)
-            continue;
-        else if (MsgHelper::Status::succeed == status)
-            return true;
-        else if (MsgHelper::Status::failed == status)
-        {
-            LOG_WARNING("SrflxCandidate", "Send 1st Bind Request received error resp");
-            return false;
-        }
-        else
-        {
-            LOG_WARNING("SrflxCandidate", "process was terminated!");
-            return false;
+            return "host";
         }
     }
-
-    LOG_WARNING("SrflxCandidate", "Send 1st Bind Request timout");
-    return bResult;
 }

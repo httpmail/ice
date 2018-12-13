@@ -34,17 +34,15 @@ namespace{
                 Deprecated IPv4-compatible IPv6 addresses [RFC4291] and IPv6 sitelocal
                 unicast addresses [RFC3879] MUST NOT be included in the
                 address candidates
-                */
-                auto ipv6 = ep_address.to_v6();
-                if (ipv6.is_v4_compatible() || ipv6.is_site_local())
-                    continue;
 
-                /*
+
                 IPv4-mapped IPv6 addresses SHOULD NOT be included in the address
                 candidates unless the application using ICE does not support IPv4
                 (i.e., it is an IPv6-only application [RFC4038]).
                 */
-                if (bSupportIPv4 && ipv6.is_v4_mapped())
+
+                auto ipv6 = ep_address.to_v6();
+                if (ipv6.is_v4_compatible() || ipv6.is_site_local() || ipv6.is_link_local() || (bSupportIPv4 && ipv6.is_v4_mapped()))
                     continue;
             }
             else if (0 == ep_address.to_string().find("169.254"))  // ipv4 lock-link

@@ -36,9 +36,6 @@
     <ClInclude Include="inc\media.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
-    <ClInclude Include="inc\peer.h">
-      <Filter>ice\inc</Filter>
-    </ClInclude>
     <ClInclude Include="..\pg\inc\pg_log.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
@@ -81,6 +78,9 @@
     <ClInclude Include="inc\stream.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
+    <ClInclude Include="inc\sdp.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent.cpp">
@@ -93,9 +93,6 @@
       <Filter>ice\src</Filter>
     </ClCompile>
     <ClCompile Include="src\media.cpp">
-      <Filter>ice\src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\peer.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
     <ClCompile Include="src\session.cpp">
@@ -130,6 +127,9 @@
       <Filter>pg\src</Filter>
     </ClCompile>
     <ClCompile Include="src\stream.cpp">
+      <Filter>ice\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\sdp.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
   </ItemGroup>

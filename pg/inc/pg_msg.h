@@ -108,6 +108,7 @@ namespace PG{
         using MsgContainer = std::unordered_map<MsgEntity::MSG_ID, SubscribersContainer*>;
 
     private:
+        std::recursive_mutex   m_Mutex;
         MsgContainer m_Msg;
     };
 
@@ -115,6 +116,6 @@ namespace PG{
     public:
         Subscriber() {}
         virtual ~Subscriber() {}
-        virtual void OnPublished(MsgEntity::MSG_ID msgId, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam) = 0;
+        virtual void OnPublished(const Publisher *publisher, MsgEntity::MSG_ID msgId, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam) = 0;
     };
 }

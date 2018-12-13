@@ -21,17 +21,11 @@ namespace ICE {
 
     UDPChannel::~UDPChannel()
     {
-        boost::system::error_code errCode;
-
-        m_Socket.shutdown(boost::asio::socket_base::shutdown_both, errCode);
-        if (errCode)
-        {
-            LOG_ERROR("UDPChannel", "shutdown error %d", errCode);
-        }
-        m_Socket.close();
+        if (m_Socket.is_open())
+            Close();
     }
 
-    bool UDPChannel::BindRemote(const std::string & ip, int16_t port) noexcept
+    bool UDPChannel::BindRemote(const std::string & ip, uint16_t port) noexcept
     {
         try
         {
@@ -45,14 +39,44 @@ namespace ICE {
         }
     }
 
-    bool UDPChannel::Bind(const std::string& ip, int16_t port) noexcept
+    bool UDPChannel::Shutdown(ShutdownType type) noexcept
+    {
+        try
+        {
+            boost::system::error_code errCode;
+            m_Socket.shutdown(static_cast<boost::asio::socket_base::shutdown_type>(type), errCode);
+            if (errCode)
+            {
+                LOG_ERROR("UDPChannel", "shutdown error %d", errCode);
+                return false;
+            }
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("UDPChannel", "shutdown operator : %d, exception: %s", type, e.what());
+            return false;
+        }
+    }
+
+    std::string UDPChannel::PeerIP() const noexcept
+    {
+        return m_RemoteEp.address().to_string();
+    }
+
+    uint16_t UDPChannel::PeerPort() const noexcept
+    {
+        return m_RemoteEp.port();
+    }
+
+    bool UDPChannel::Bind(const std::string& ip, uint16_t port) noexcept
     {
         assert(!m_Socket.is_open());
         using namespace boost::asio::ip;
         try
         {
             udp::endpoint ep(address::from_string(ip), port);
-            return BindSocket(m_Socket, ep);
+            return BindSocket<true>(m_Socket, ep);
         }
         catch (const boost::system::system_error &e)
         {
@@ -101,7 +125,7 @@ namespace ICE {
         }
     }
 
-    std::string UDPChannel::IP() noexcept
+    std::string UDPChannel::IP() const noexcept
     {
         try
         {
@@ -114,7 +138,7 @@ namespace ICE {
         }
     }
 
-    uint16_t UDPChannel::Port() noexcept
+    uint16_t UDPChannel::Port() const noexcept
     {
         try
         {
@@ -127,6 +151,21 @@ namespace ICE {
         }
     }
 
+    bool UDPChannel::Close() noexcept
+    {
+        try
+        {
+            Shutdown(ShutdownType::both);
+            m_Socket.close();
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("UDPChannel", "Get Port exception : %s", e.what());
+            return false;
+        }
+    }
+
     //////////////////////// TCPChannel //////////////////////////////
     TCPChannel::TCPChannel(boost::asio::io_service& service) :
         m_Socket(service)
@@ -135,17 +174,21 @@ namespace ICE {
 
     TCPChannel::~TCPChannel()
     {
-        boost::system::error_code errCode;
-        m_Socket.shutdown(boost::asio::socket_base::shutdown_both, errCode);
-        if (errCode)
-        {
-            LOG_ERROR("UDPChannel", "shutdown error %d", errCode);
-        }
-        m_Socket.close();
-
+        if (m_Socket.is_open())
+            Close();
     }
 
-    bool TCPChannel::Bind(const std::string& ip, int16_t port) noexcept
+    std::string TCPChannel::PeerIP() const noexcept
+    {
+        return m_Socket.remote_endpoint().address().to_string();
+    }
+
+    uint16_t TCPChannel::PeerPort() const noexcept
+    {
+        return m_Socket.remote_endpoint().port();
+    }
+
+    bool TCPChannel::Bind(const std::string& ip, uint16_t port) noexcept
     {
         assert(!m_Socket.is_open());
 
@@ -153,7 +196,7 @@ namespace ICE {
         try
         {
             tcp::endpoint ep(address::from_string(ip), port);
-            return BindSocket(m_Socket, ep);
+            return BindSocket<false>(m_Socket, ep);
         }
         catch (const boost::system::system_error &e)
         {
@@ -184,7 +227,7 @@ namespace ICE {
 
     int16_t TCPChannel::Read(void* buffer, int16_t size) noexcept
     {
-        assert(m_Socket.is_open() && buffer && size);
+        assert(buffer && size);
         try
         {
             boost::system::error_code error;
@@ -210,7 +253,7 @@ namespace ICE {
         }
     }
 
-    std::string TCPChannel::IP() noexcept
+    std::string TCPChannel::IP() const noexcept
     {
         try
         {
@@ -223,7 +266,7 @@ namespace ICE {
         }
     }
 
-    uint16_t TCPChannel::Port() noexcept
+    uint16_t TCPChannel::Port() const noexcept
     {
         try
         {
@@ -233,6 +276,41 @@ namespace ICE {
         {
             LOG_ERROR("TCPChannel", "Get Port exception : %s", e.what());
             return -1;
+        }
+    }
+
+    bool TCPChannel::Close() noexcept
+    {
+        try
+        {
+            Shutdown(ShutdownType::both);
+            m_Socket.close();
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("TCPChannel", "Close exception : %s", e.what());
+            return false;
+        }
+    }
+
+    bool TCPChannel::Shutdown(ShutdownType type) noexcept
+    {
+        try
+        {
+            boost::system::error_code errCode;
+            m_Socket.shutdown(static_cast<boost::asio::socket_base::shutdown_type>(type), errCode);
+            if (errCode)
+            {
+                LOG_ERROR("TCPChannel", "Shutdown error %d", errCode);
+                return false;
+            }
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("TCPChannel", "Shutdown operator %d : exception: %s", type, e.what());
+            return false;
         }
     }
 
@@ -262,7 +340,7 @@ namespace ICE {
         }
     }
 
-    bool TCPActiveChannel::Connect(const std::string& ip, int16_t port) noexcept
+    bool TCPActiveChannel::Connect(const std::string& ip, uint16_t port) noexcept
     {
         assert(m_Socket.is_open());
 
@@ -288,7 +366,7 @@ namespace ICE {
     {
     }
 
-    bool TCPPassiveChannel::Bind(const std::string& ip, int16_t port) noexcept
+    bool TCPPassiveChannel::Bind(const std::string& ip, uint16_t port) noexcept
     {
         try
         {
@@ -303,7 +381,7 @@ namespace ICE {
         }
     }
 
-    bool TCPPassiveChannel::Accept(boost::asio::ip::tcp::socket& socket, const std::string& ip, int16_t port) noexcept
+    bool TCPPassiveChannel::Accept(boost::asio::ip::tcp::socket& socket, const std::string& ip, uint16_t port) noexcept
     {
         assert(m_Acceptor.is_open());
 

@@ -1,4 +1,5 @@
 #include "stunmsg.h"
+#include "channel.h"
 
 namespace {
     uint16_t CalcPaddingSize(uint16_t length, int16_t N = 4)
@@ -83,12 +84,12 @@ namespace STUN {
         reinterpret_cast<uint32_t*>(pBuf)[0] = reinterpret_cast<const uint32_t*>(&attr)[0];
     }
 
-    MessagePacket::MessagePacket(const PACKET::stun_packet & packet) :
-        m_StunPacket(packet), m_FinalFlag(true)
+    MessagePacket::MessagePacket(const PACKET::stun_packet & packet, uint16_t packet_size) :
+        m_StunPacket(packet)
     {
-        assert(packet.MsgId() != MsgType::InvalidMsg);
-        m_AttrLength = packet.Length();
+        assert(IsValidStunPacket(packet, packet_size));
 
+        m_AttrLength = packet.Length();
         try
         {
             auto attr         = packet.Attributes();
@@ -332,6 +333,11 @@ namespace STUN {
         reinterpret_cast<uint64_t*>(&id)[1] = PG::host_to_network(PG::GenerateRandom64());
     }
 
+    bool MessagePacket::SendData(ICE::Channel & channel) const
+    {
+        return channel.Write(&m_StunPacket, m_AttrLength + sStunHeaderLength) > 0;
+    }
+
     const ATTR::MappedAddress* MessagePacket::GetAttribute(const ATTR::MappedAddress *& mapAddr) const
     {
         auto itor = m_Attributes.find(ATTR::Id::MappedAddress);
@@ -481,6 +487,29 @@ namespace STUN {
             data_len -= 8; // length of Fingerprint attribute;
         }
 
+        return true;
+    }
+
+    bool MessagePacket::IsValidStunPacket(const PACKET::stun_packet& packet, uint16_t packet_size)
+    {
+        if (packet_size < sStunHeaderLength)
+            return false;
+
+        const uint8_t* rawData = reinterpret_cast<const uint8_t*>(&packet);
+
+        if (rawData[0] != 0x00 && rawData[0] != 0x01)
+            return false;
+
+        auto content_length = packet.Length();
+
+        // content length always padding to 4 bytes
+        if ( 0 != (content_length & 0x03) || (content_length + sStunHeaderLength != packet_size))
+            return false;
+
+        // packet has magicCookie
+        if (reinterpret_cast<const uint32_t*>(packet.TransId())[0] == PG::host_to_network(sMagicCookie))
+        {
+        }
         return true;
     }
 

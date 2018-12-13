@@ -1,26 +1,22 @@
 #pragma once
 
-#include <set>
 #include <map>
-#include <thread>
-#include <memory>
-
 #include "pg_msg.h"
+#include "media.h"
 
 namespace ICE {
+
     class Candidate;
-    class Media;
-    class Agent;
-    class CChannel;
-    class CAgentConfig;
 
     class Session
     {
     public:
         class SessionConfig {
         public:
-            SessionConfig(uint64_t tiebreak, const std::string& localFrag, const std::string& localPwd) :
-                m_Tiebreaker(tiebreak), m_LocalUserFrag(localFrag), m_LocalUserPwd(localPwd)
+            SessionConfig(uint64_t tiebreak) :
+                m_Tiebreaker(tiebreak),
+                m_Username("-"),
+                m_SessionName("-")
             {
             }
 
@@ -31,7 +27,7 @@ namespace ICE {
         public:
             const std::string GetConnectivityCheckUsername() const
             {
-                return m_RemoteUserFrag + ":" + m_LocalUserFrag;
+                return m_RemoteUserFrag + ":";
             }
 
             const std::string GetConnectivityCheckPassword() const
@@ -43,6 +39,7 @@ namespace ICE {
             {
                 m_RemoteUserFrag = remoteUserFrag;
             }
+
             const std::string& RemoteUserFrag() const
             {
                 return m_RemoteUserFrag;
@@ -52,48 +49,81 @@ namespace ICE {
             {
                 m_RemoteUserPwd = remoteUserPwd;
             }
+
             const std::string& RemoteUserPassword() const
             {
                 return m_RemoteUserPwd;
             }
 
+            const std::string& UserName() const
+            {
+                return m_Username;
+            }
+
+            const std::string& SessionName() const
+            {
+                return m_SessionName;
+            }
+
         private:
             /* rfc5245 15.4 */
-            std::string m_LocalUserFrag;
-            std::string m_LocalUserPwd;
             std::string m_RemoteUserFrag;
             std::string m_RemoteUserPwd;
 
+            const std::string m_Username;  /*for SDP*/
+            const std::string m_SessionName; /*for SDP*/
+
             bool m_bControlling;
             const uint64_t m_Tiebreaker; /* rfc8445 16.1 */
+        };
+
+        class RemoteMedia {
+        public:
+            using CandContainer = std::set<Candidate*>;
+
+        public:
+            RemoteMedia();
+            virtual ~RemoteMedia();
+
+            void AddHostCandidate(uint8_t compId, bool bUDP, const std::string& baseIP, uint16_t basePort);
+
+            void AddSrflxCandidate(uint8_t compId, bool bUDP,
+                const std::string& baseIP, uint16_t basePort,
+                const std::string& relatedIP, uint16_t relatedPort);
+
+            void AddPrflxCandidate(uint8_t compId, bool bUDP,
+                const std::string& baseIP, uint16_t basePort,
+                const std::string& relatedIP, uint16_t relatedPort);
+
+            void AddRelayCandidate(uint8_t compId, bool bUDP,
+                const std::string& baseIP, uint16_t basePort,
+                const std::string& relatedIP, uint16_t relatedPort);
+
+        private:
+            const std::string   m_icepwd;
+            const std::string   m_iceufrag;
+            CandContainer       m_Cands;
         };
 
     public:
         Session();
         virtual ~Session();
 
-        bool GatherCandidate(const CAgentConfig& config);
-        bool ConnectivityCheck();
+        bool MakeOffer(std::string& offer);
+        bool MakeAnswer(const std::string& remoteOffer, std::string& answer);
+        bool DecodeSDP(const std::string& offer);
 
     private:
-        static void GatheringThread(Session *pOwn, const CAgentConfig& config);
+        bool DecodeMediaLine(const std::string& mediaLine, bool bUfragPwdExisted);
 
     private:
-        using CChannelPtr                   = std::shared_ptr<CChannel>;
-        using HostCandidateContainer        = std::map<Candidate*, Media*>;
-        using SrflxCandidateContainer       = std::map<Candidate*, Media*>;
-        using RelayedCandidateContainer     = std::map<Candidate*, Media*>;
-        using PeerSrflxCandidateContainer   = std::map<Candidate*, Media*>;
-        using MediaContainer                = std::set<Media*>; /* key: @string*/
-        using ChannelContainer              = std::set<CChannelPtr>;
+        using MediaContainer        = std::map<std::string, Media*>;
+        using RemoteMediaContainer  = std::map<std::string, RemoteMedia*>;
 
     private:
-        std::thread m_gatherThrd;
-        SessionConfig m_Config;
-        MediaContainer              m_Medias;
-        HostCandidateContainer      m_HostCands;
-        SrflxCandidateContainer     m_SrflxCands;
-        RelayedCandidateContainer   m_RelayedCands;
-        PeerSrflxCandidateContainer m_PeerSrflxCands;
+        SessionConfig           m_Config;
+        MediaContainer          m_Medias;
+        RemoteMediaContainer    m_RemoteMedias;
+        std::string             m_DefaultIP;
     };
 }

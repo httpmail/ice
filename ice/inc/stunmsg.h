@@ -3,23 +3,25 @@
 #include "pg_log.h"
 #include "stundef.h"
 
-#include <boost/asio.hpp>
 #include <type_traits>
 #include <unordered_map>
+
 #include <assert.h>
 
 
-using namespace boost::asio::detail::socket_ops;
+namespace ICE {
+    class Channel;
+}
 
 namespace STUN {
     class MessagePacket {
     public:
         MessagePacket(MsgType msgId, const TransId& transId):
-            m_StunPacket(msgId, transId), m_AttrLength(0), m_FinalFlag(false)
+            m_StunPacket(msgId, transId), m_AttrLength(0)
         {
         }
 
-        MessagePacket(const PACKET::stun_packet& packet);
+        MessagePacket(const PACKET::stun_packet& packet, uint16_t packet_size);
 
         ~MessagePacket()
         {
@@ -45,7 +47,7 @@ namespace STUN {
             return reinterpret_cast<const uint8_t*>(&m_StunPacket);
         }
 
-        uint16_t GetLength() const 
+        uint16_t GetLength() const
         {
             return m_AttrLength + sStunHeaderLength;
         }
@@ -58,6 +60,8 @@ namespace STUN {
         {
             return m_UnsupportedAttrs.size() > 0;
         }
+
+        bool SendData(ICE::Channel& channel) const;
 
         const ATTR::MappedAddress*    GetAttribute(const ATTR::MappedAddress*& mapAddr) const;
         const ATTR::ChangeRequest*    GetAttribute(const ATTR::ChangeRequest*& changeReq) const;
@@ -100,6 +104,7 @@ namespace STUN {
         static void GenerateRFC3489TransationId(TransIdRef id);
         static void ComputeSHA1(const MessagePacket &packet, const std::string& key, SHA1Ref sha1);
         static bool VerifyMsgIntegrity(const MessagePacket &packet, const std::string& key);
+        static bool IsValidStunPacket(const PACKET::stun_packet& packet, uint16_t packet_size);
 
     protected:
         using Attributes = std::unordered_map<ATTR::Id, int16_t>; /*key = attribute id,  value = index in StunPacket::m_Attrs */
@@ -111,7 +116,6 @@ namespace STUN {
 
     protected:
         uint16_t            m_AttrLength;
-        bool                m_FinalFlag;
         PACKET::stun_packet m_StunPacket;
         Attributes          m_Attributes;
         Attributes          m_UnsupportedAttrs;
@@ -185,7 +189,7 @@ namespace STUN {
         {
         }
 
-        virtual ~FirstBindRequestMsg() = 0 {}
+        virtual ~FirstBindRequestMsg() {}
     };
 
     class SubBindRequestMsg : public MessagePacket {
@@ -202,16 +206,6 @@ namespace STUN {
         }
 
         virtual ~BindRespMsg() = 0 {}
-    };
-
-    class BindErrorRespMsg : public MessagePacket {
-    public:
-        BindErrorRespMsg(const TransId& transId) :
-            MessagePacket(STUN::MsgType::BindingErrResp, transId)
-        {
-        }
-
-        virtual ~BindErrorRespMsg() = 0 {}
     };
 
     class RFC53891stBindRequestMsg : public FirstBindRequestMsg {
@@ -247,10 +241,10 @@ namespace STUN {
 
     };
 
-    class RFC5389BindErrorRespMsg : public BindErrorRespMsg {
+    class RFC5389BindErrorRespMsg : public BindingErrRespMsg {
     public:
         RFC5389BindErrorRespMsg(TransIdConstRef id, uint8_t classCode, uint8_t number, const std::string& reason) : 
-            BindErrorRespMsg(id)
+            BindingErrRespMsg(id)
         {
             AddErrorCode(classCode, number, reason);
         }
