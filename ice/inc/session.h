@@ -5,9 +5,6 @@
 #include "media.h"
 
 namespace ICE {
-
-    class Candidate;
-
     class Session
     {
     public:
@@ -77,53 +74,19 @@ namespace ICE {
             const uint64_t m_Tiebreaker; /* rfc8445 16.1 */
         };
 
-        class RemoteMedia {
-        public:
-            using CandContainer = std::set<Candidate*>;
-
-        public:
-            RemoteMedia();
-            virtual ~RemoteMedia();
-
-            void AddHostCandidate(uint8_t compId, bool bUDP, const std::string& baseIP, uint16_t basePort);
-
-            void AddSrflxCandidate(uint8_t compId, bool bUDP,
-                const std::string& baseIP, uint16_t basePort,
-                const std::string& relatedIP, uint16_t relatedPort);
-
-            void AddPrflxCandidate(uint8_t compId, bool bUDP,
-                const std::string& baseIP, uint16_t basePort,
-                const std::string& relatedIP, uint16_t relatedPort);
-
-            void AddRelayCandidate(uint8_t compId, bool bUDP,
-                const std::string& baseIP, uint16_t basePort,
-                const std::string& relatedIP, uint16_t relatedPort);
-
-        private:
-            const std::string   m_icepwd;
-            const std::string   m_iceufrag;
-            CandContainer       m_Cands;
-        };
-
     public:
         Session();
         virtual ~Session();
 
         bool MakeOffer(std::string& offer);
         bool MakeAnswer(const std::string& remoteOffer, std::string& answer);
-        bool DecodeSDP(const std::string& offer);
-
-    private:
-        bool DecodeMediaLine(const std::string& mediaLine, bool bUfragPwdExisted);
 
     private:
         using MediaContainer        = std::map<std::string, Media*>;
-        using RemoteMediaContainer  = std::map<std::string, RemoteMedia*>;
 
     private:
         SessionConfig           m_Config;
         MediaContainer          m_Medias;
-        RemoteMediaContainer    m_RemoteMedias;
         std::string             m_DefaultIP;
     };
 }

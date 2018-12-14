@@ -88,7 +88,6 @@ namespace ICE {
     int16_t UDPChannel::Write(const void* buffer, int16_t size) noexcept
     {
         assert(m_Socket.is_open());
-
         try
         {
             boost::system::error_code error;
@@ -110,13 +109,12 @@ namespace ICE {
         {
             LOG_ERROR("Read", "Error");
         }
+
         try
         {
             boost::system::error_code error;
             auto bytes = m_Socket.receive_from(boost::asio::buffer(buffer, size), m_RemoteEp, 0, error);
-
             return boost::asio::error::eof == error ? 0 : static_cast<int16_t>(bytes);
-
         }
         catch (const boost::system::system_error& e)
         {

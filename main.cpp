@@ -24,6 +24,7 @@ int main()
     audioStream.GatheringCandidate(config);
 #endif
 
+
     std::istringstream stream("video 49170/2 RTP/AVP 31");
 
     std::string str("m=video 49170/2 RTP/AVP 31");
@@ -42,5 +43,6 @@ int main()
     {
         std::cout << e.what() << std::endl;
     }
+
     return 1;
 }

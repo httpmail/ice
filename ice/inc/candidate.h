@@ -19,11 +19,21 @@ namespace STUN {
             const std::string& baseIP, uint16_t basePort,
             const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP);
 
+        Candidate(TypeRef eType, uint8_t compId, uint32_t pri, const std::string& foundation,
+            const std::string& baseIP, uint16_t basePort,
+            const std::string& relatedIP, uint16_t relatedPort):
+            m_TypeRef(eType), m_CompId(compId), m_Priority(pri),
+            m_IP(baseIP),m_Port(basePort),
+            m_RelatedIP(relatedIP), m_RelatedPort(relatedPort),
+            m_Foundation(foundation)
+        {
+        }
+
         virtual ~Candidate() = 0 {}
 
-        uint32_t Foundation()   const { return m_Foundation; }
-        uint32_t Priority()     const { return m_Priority; }
-        uint16_t ComponentId()  const { return m_CompId; }
+        const std::string& Foundation()   const { return m_Foundation; }
+        uint32_t           Priority()     const { return m_Priority; }
+        uint16_t           ComponentId()  const { return m_CompId; }
 
         const std::string& TransationIP() const { return m_IP;  }
         uint16_t TransationPort()         const { return m_Port;}
@@ -41,7 +51,7 @@ namespace STUN {
             return ((static_cast<uint8_t>(type) & 0xFF) << 24) + ((localPref & 0xFFFF) << 8) + (((256 - comp_id) & 0xFF) << 0);
         }
 
-        static uint32_t ComputeFoundations(TypeRef type, const std::string& baseIP, const std::string& serverIP, bool bUDP);
+        static std::string ComputeFoundations(TypeRef type, const std::string& baseIP, const std::string& serverIP, bool bUDP);
 
     private:
         const TypeRef   m_TypeRef;
@@ -53,8 +63,8 @@ namespace STUN {
         const std::string m_RelatedIP;
         const uint16_t    m_RelatedPort;
 
-        const uint32_t  m_Foundation;
-        const uint32_t  m_Priority;
+        const std::string m_Foundation;
+        const uint32_t    m_Priority;
     };
 
     class HostCandidate : public Candidate {
@@ -62,6 +72,11 @@ namespace STUN {
         HostCandidate(uint8_t compId, uint16_t localPref,
             const std::string& baseIP, uint16_t basePort) :
             Candidate(TypeRef::host, compId, localPref, true, baseIP, basePort, baseIP, basePort, baseIP)
+        {
+        }
+
+        HostCandidate(uint8_t compId, uint32_t pri, const std::string& foundation, const std::string& ip, uint16_t port):
+            Candidate(TypeRef::host, compId, pri, foundation, ip, port, ip, port)
         {
         }
 
@@ -74,6 +89,10 @@ namespace STUN {
             const std::string& baseIP, uint16_t basePort,
             const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP) :
             Candidate(TypeRef::host, compId, localPref, false, baseIP, basePort, relatedIP, relatedPort, serverIP)
+        {
+        }
+        ActiveCandidate(uint8_t compId, uint32_t pri, const std::string& foundation,const std::string& ip, uint16_t port) :
+            Candidate(TypeRef::host, compId, pri, foundation, ip, port, ip, port)
         {
         }
 
@@ -89,6 +108,11 @@ namespace STUN {
         {
         }
 
+        PassiveCandidate(uint8_t compId, uint32_t pri, const std::string& foundation, const std::string& ip, uint16_t port) :
+            Candidate(TypeRef::host, compId, pri, foundation, ip, port, ip, port)
+        {
+        }
+
         virtual ~PassiveCandidate() {}
     };
 
@@ -101,6 +125,13 @@ namespace STUN {
         {
         }
 
+        SrflxCandidate(uint8_t compId, uint32_t pri, const std::string& foundation,
+            const std::string& baseIP, uint16_t basePort,
+            const std::string& relatedIP, uint16_t relatedPort) :
+            Candidate(TypeRef::server_reflexive, compId, pri, foundation, baseIP, basePort, relatedIP, relatedPort)
+        {
+        }
+
         virtual ~SrflxCandidate() {}
     };
 
@@ -109,7 +140,14 @@ namespace STUN {
         RelayedCandidate(uint8_t compId, uint16_t localPref,
             const std::string& baseIP, uint16_t basePort,
             const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP) :
-            Candidate(TypeRef::server_reflexive, compId, localPref, false, baseIP, basePort, relatedIP, relatedPort, serverIP)
+            Candidate(TypeRef::relayed, compId, localPref, false, baseIP, basePort, relatedIP, relatedPort, serverIP)
+        {
+        }
+
+        RelayedCandidate(uint8_t compId, uint32_t pri, const std::string& foundation,
+            const std::string& baseIP, uint16_t basePort,
+            const std::string& relatedIP, uint16_t relatedPort) :
+            Candidate(TypeRef::relayed, compId, pri, foundation, baseIP, basePort, relatedIP, relatedPort)
         {
         }
         virtual ~RelayedCandidate() {}

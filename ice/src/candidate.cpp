@@ -2,6 +2,9 @@
 #include "candidate.h"
 #include <functional>
 #include <boost/function.hpp>
+#include <boost/lexical_cast.hpp>
+
+#include "pg_log.h"
 
 namespace STUN {
     Candidate::Candidate(TypeRef eType, uint8_t compId, uint16_t localPref, bool bUDP,
@@ -13,13 +16,20 @@ namespace STUN {
     {
     }
 
-    uint32_t Candidate::ComputeFoundations(TypeRef type, const std::string & baseIP, const std::string & serverIP, bool bUDP)
+    std::string Candidate::ComputeFoundations(TypeRef type, const std::string & baseIP, const std::string & serverIP, bool bUDP)
     {
         char hashInfo[1024];
 
         sprintf_s(hashInfo, sizeof(hashInfo), "%s%s%d%d", baseIP.c_str(), serverIP.c_str(), bUDP, type);
-
-        return std::hash<std::string>{}(hashInfo);
+        try
+        {
+            return boost::lexical_cast<std::string>(std::hash<std::string>{}(hashInfo));
+        }
+        catch (const std::exception&)
+        {
+            LOG_ERROR("Candidate","ComputeFoundation failed");
+            return "0000";
+        }
     }
 
     std::string Candidate::TypeName() const
