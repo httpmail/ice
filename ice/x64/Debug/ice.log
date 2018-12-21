@@ -1,11 +1,1 @@
-﻿  session.cpp
-  Generating Code...
-d:\project\ice\ice\src\session.cpp(168): warning C4715: 'ICE::Session::ConnectivityCheck': not all control paths return a value
-d:\project\ice\ice\src\session.cpp(74): warning C4715: '`anonymous namespace'::FormingCandidatePairs': not all control paths return a value
-  Compiling...
-  sdp.cpp
-  media.cpp
-d:\project\ice\ice\src\media.cpp(43): warning C4244: 'argument': conversion from 'uint16_t' to 'const unsigned char', possible loss of data
-  Generating Code...
-  ice.vcxproj -> D:\project\ice\x64\Debug\ice.exe
-  ice.vcxproj -> D:\project\ice\x64\Debug\ice.pdb (Full PDB)
+﻿
