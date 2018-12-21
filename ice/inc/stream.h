@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <assert.h>
 
-#include "stundef.h"
+#include "streamdef.h"
 #include "stunmsg.h"
 
 #include "pg_msg.h"
@@ -12,35 +12,14 @@
 
 namespace STUN {
     class Candidate;
-    class HostCandidate;
-    class ActiveCandidate;
-    class PassiveCandidate;
-    class SrflxCandidate;
 }
 
 namespace ICE {
     class CAgentConfig;
     class Channel;
 
-    class Stream : PG::MsgEntity{
+    class Stream : public PG::MsgEntity{
     public:
-        static const uint8_t RTP_ID     = 1;
-        static const uint8_t RTCP_ID    = 2;
-
-    public:
-        enum  class Pipline
-        {
-            udp,
-            passive_tcp,
-            active_tcp,
-        };
-
-        enum class TransProto {
-            udp,
-            rtp_avp,
-            rtp_savp,
-        };
-
         enum class Message {
             Gathering,
             Checking,
@@ -50,20 +29,20 @@ namespace ICE {
         using CandidateContainer = std::unordered_map<STUN::Candidate*, ICE::Channel*>;
 
     public:
-        Stream(uint8_t compId, Pipline pipline, uint16_t localPref, const std::string& hostIp, uint16_t hostPort);
+        Stream(uint8_t compId, Protocol protocol, uint16_t localPref, const std::string& hostIp, uint16_t hostPort);
 
         virtual ~Stream();
         bool Create(const CAgentConfig& config);
         bool GatheringCandidate(const CAgentConfig& config);
 
         std::string GetHostIP() const { return std::string(); }
-        uint16_t    GetHostPort() const  { return 0;}
+        uint16_t    GetHostPort() const  { return m_HostPort;}
         std::string GetTransportProtocol() const { return "RTP/SVAP";}
         std::string GetFmtDescription() const { return "0"; }
         const CandidateContainer& GetCandidates() const { return m_Cands; }
-        bool IsUDP() const { return m_Pipline == Pipline::udp;}
+        bool IsUDP() const { return m_Protocol == Protocol::udp;}
 
-    private:
+    public:
         template<class T>
         static T* CreateChannel(const std::string& ip, uint16_t port)
         {
@@ -75,17 +54,17 @@ namespace ICE {
             constexpr bool is_udp = std::is_base_of<UDPChannel, T>::value;
             using endpoint_type = channel_type<is_udp>::endpoint;
             using socket_type = channel_type<is_udp>::socket;
-            try
+           try
             {
                 std::auto_ptr<T> channel(new T);
-                if (channel.get())
-                    return channel->BindSocket<is_udp>(channel->Socket(), endpoint_type(boost::asio::ip::address::from_string(ip), port)) ? channel.release() : nullptr;
+                if (channel.get() && channel->BindSocket<is_udp>(channel->Socket(), endpoint_type(boost::asio::ip::address::from_string(ip), port)))
+                    return  channel.release();
                 else
                     return nullptr;
             }
-            catch (const std::exception& e)
+           catch (const std::exception& e)
             {
-                LOG_ERROR("Stream", "CreateChannel exception %s", e.what());
+               LOG_ERROR("Stream", "CreateChannel exception %s", e.what());
                 return nullptr;
             }
         }
@@ -110,6 +89,7 @@ namespace ICE {
                 endpoint_type ep(boost::asio::ip::address::from_string(ip), 0);
                 while(attempts--)
                 {
+                    ep.port(PG::GenerateRandom(lowPort, upperPort));
                     if (channel->BindSocket<is_udp>(channel->Socket(), ep))
                         return channel.release();
                 }
@@ -134,7 +114,7 @@ namespace ICE {
         };
 
         bool CheckConnectivity(Stream* pThis);
-        bool GatherHostCandidate(const std::string &ip, uint16_t port, Pipline pipline);
+        bool GatherHostCandidate(const std::string &ip, uint16_t port, Protocol protocol);
         bool GatherReflexiveCandidate(const std::string &ip, uint16_t lowerPort, uint16_t upperPort, const std::string& stunIP, uint16_t stunPort);
         bool GatherRelayedCandidate(const std::string &ip, uint16_t lowerPort, uint16_t upperPort, const std::string& turnServer, uint16_t turnPort);
 
@@ -159,7 +139,7 @@ namespace ICE {
         using StunGatherHelpers = std::unordered_set<StunGatherHelper*>;
 
         const uint8_t           m_CompId;
-        const Pipline           m_Pipline;
+        const Protocol          m_Protocol;
         const std::string       m_HostIP;
         const int16_t           m_HostPort;
         const uint16_t          m_LocalPref;

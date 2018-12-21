@@ -10,11 +10,15 @@ namespace STUN {
     class Candidate;
 }
 
+namespace ICE {
+    class Session;
+}
+
 class CSDP {
 public:
     class RemoteMedia {
     public:
-        using CandContainer     = std::unordered_set<STUN::Candidate*>;
+        using CandContainer     = std::unordered_set<const STUN::Candidate*>;
         using ComponentCands    = std::unordered_map<uint8_t, CandContainer*>;
 
     public:
@@ -24,6 +28,9 @@ public:
         }
 
         virtual ~RemoteMedia();
+
+        const std::string& Type() const { return m_type; }
+        const ComponentCands& Candidates() const { return m_Cands; }
 
         bool AddHostCandidate(uint8_t compId, uint32_t pri, const std::string& foundation, const std::string& baseIP, uint16_t basePort);
 
@@ -51,6 +58,7 @@ public:
 
 public:
     using RemoteMediaContainer = std::unordered_map<std::string, RemoteMedia*>;
+    using ConnectContainer     = std::unordered_map<std::string, bool>; /* IPV*/
 
 public:
     CSDP();
@@ -58,11 +66,16 @@ public:
 
 public:
     bool Decode(const std::string& offer);
+    bool Encode(const ICE::Session & session, std::string& offer);
+    const RemoteMediaContainer& GetRemoteMedia() const { return m_RemoteMedias; }
 
 private:
-    RemoteMedia* DecodeMediaLine(const std::string& mediaLine, bool bUfragPwdExisted);
+    RemoteMedia* DecodeMediaLine(const std::string& mediaLine, bool bSesUfragPwdExisted);
     bool DecodeCLine(const std::string& cline);
 
 private:
     RemoteMediaContainer m_RemoteMedias;
+    std::string          m_IcePwd;
+    std::string          m_IceUfrag;
+    ConnectContainer     m_Cline;
 };

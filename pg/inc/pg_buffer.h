@@ -9,29 +9,6 @@
 #include <assert.h>
 
 namespace PG {
-    class circular_buffer {
-    public:
-        circular_buffer(int16_t size) noexcept;
-        virtual ~circular_buffer();
-
-        int write(const void *buf, int size);
-        int read(void *buf, int size);
-        int is_bad();
-
-    private:
-        mutable std::mutex m_writer_mutex;
-        mutable std::mutex m_reader_mutex;
-
-        uint8_t* const m_buffer;
-        uint8_t* const m_end;
-
-        uint8_t *m_reader;
-        uint8_t *m_writer;
-        int16_t m_size;
-
-        const int16_t m_capacity;
-    };
-
     template<class T, uint16_t TSize, uint16_t TNumber>
     class CircularBuffer {
     public:
@@ -104,6 +81,11 @@ namespace PG {
         uint16_t Size() const
         {
             return m_Size;
+        }
+
+        uint16_t DataLength() const
+        {
+            return TSize;
         }
 
         void Unlock(const Elem& elem, bool bCanceled = false)

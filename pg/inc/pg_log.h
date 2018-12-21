@@ -43,12 +43,10 @@ namespace PG {
 
 
     private:
-        static const int sMaxLineLength = 1024;
-        static const int sMaxHeadLength = 128;
-        static const int sCacheSize     = 256;
-        static const int sTLSCacheSize  = 256;
+        static const int sMaxLineLength = 4096*2;
+        static const int sTLSCacheSize  = 12;
 
-        using TLSContainer = PG::CircularBuffer<char, sMaxHeadLength, sTLSCacheSize>;
+        using TLSContainer = PG::CircularBuffer<char, sMaxLineLength, sTLSCacheSize>;
         using LogContainer = std::vector<std::shared_ptr<TLSContainer>>;
 
     private:

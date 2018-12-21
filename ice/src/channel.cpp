@@ -11,6 +11,7 @@ namespace ICE {
 
     Channel::~Channel()
     {
+        //assert(0);
     }
 
     //////////////////////// UDPChannel //////////////////////////////

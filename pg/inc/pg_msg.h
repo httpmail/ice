@@ -12,11 +12,23 @@ namespace PG{
     class CListener;
     class Subscriber;
 
+    template<bool _32bit>
+    struct UINT_PTR {
+        using WPARAM = uint16_t;
+        using LPARAM = uint16_t;
+    };
+
+    template<>
+    struct UINT_PTR<false> {
+        using WPARAM = uint64_t;
+        using LPARAM = uint64_t;
+    };
+
     class MsgEntity {
     public:
         using MSG_ID = uint16_t;
-        using WPARAM = void*;
-        using LPARAM = void*;
+        using WPARAM = UINT_PTR<sizeof(void*) == 4>::WPARAM*;
+        using LPARAM = UINT_PTR<sizeof(void*) == 4>::LPARAM*;
 
     public:
         MsgEntity();
@@ -70,7 +82,7 @@ namespace PG{
 
     private:
         EventLisennerVes        m_listeners;
-        std::recursive_mutex    m_listeners_mutex;
+        std::mutex              m_listeners_mutex;
 
         MsgQueue                m_msg_queue;
         std::condition_variable m_queue_condition;
@@ -85,7 +97,9 @@ namespace PG{
     class CListener {
     public:
         CListener() {}
-        virtual ~CListener() {}
+        virtual ~CListener() {
+            return;
+        }
 
     public:
         virtual void OnEventFired(MsgEntity *pSender, MsgEntity::MSG_ID msg_id, MsgEntity::WPARAM wParam, MsgEntity::LPARAM lParam) = 0;

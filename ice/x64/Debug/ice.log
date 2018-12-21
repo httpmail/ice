@@ -1,31 +1,11 @@
-﻿  stunprotocol.cpp
-d:\project\ice\ice\src\stunprotocol.cpp(1): fatal error C1083: Cannot open include file: 'stunprotocol.h': No such file or directory
-  stunmsg.cpp
-d:\project\ice\ice\src\stunmsg.cpp(1): fatal error C1083: Cannot open include file: 'stunmsg.h': No such file or directory
-  session.cpp
-d:\project\ice\ice\src\session.cpp(1): fatal error C1083: Cannot open include file: 'session.h': No such file or directory
-  ping.cpp
-d:\project\ice\ice\src\ping.cpp(1): fatal error C1083: Cannot open include file: 'ping.h': No such file or directory
-  media.cpp
-d:\project\ice\ice\src\media.cpp(1): fatal error C1083: Cannot open include file: 'media.h': No such file or directory
-  channel.cpp
-d:\project\ice\ice\src\channel.cpp(1): fatal error C1083: Cannot open include file: 'channel.h': No such file or directory
-  candidate.cpp
-d:\project\ice\ice\src\candidate.cpp(1): fatal error C1083: Cannot open include file: 'candidate.h': No such file or directory
-  agent.cpp
-d:\project\ice\ice\src\agent.cpp(1): fatal error C1083: Cannot open include file: 'agent.h': No such file or directory
-  pg_util.cpp
-d:\project\ice\pg\src\pg_util.cpp(3): fatal error C1083: Cannot open include file: 'pg_util.h': No such file or directory
-  pg_timer.cpp
-d:\project\ice\pg\src\pg_timer.cpp(1): fatal error C1083: Cannot open include file: 'pg_timer.h': No such file or directory
-  pg_object.cpp
-d:\project\ice\pg\src\pg_object.cpp(1): fatal error C1083: Cannot open include file: 'pg_object.h': No such file or directory
-  pg_msg.cpp
-d:\project\ice\pg\src\pg_msg.cpp(1): fatal error C1083: Cannot open include file: 'pg_msg.h': No such file or directory
-  pg_log.cpp
-d:\project\ice\pg\src\pg_log.cpp(1): fatal error C1083: Cannot open include file: 'pg_log.h': No such file or directory
-  main.cpp
-d:\project\ice\main.cpp(2): fatal error C1083: Cannot open include file: 'pg_log.h': No such file or directory
-  _WIN32_WINNT=0x0501
-c1xx : fatal error C1083: Cannot open source file: '_WIN32_WINNT=0x0501': No such file or directory
+﻿  session.cpp
   Generating Code...
+d:\project\ice\ice\src\session.cpp(168): warning C4715: 'ICE::Session::ConnectivityCheck': not all control paths return a value
+d:\project\ice\ice\src\session.cpp(74): warning C4715: '`anonymous namespace'::FormingCandidatePairs': not all control paths return a value
+  Compiling...
+  sdp.cpp
+  media.cpp
+d:\project\ice\ice\src\media.cpp(43): warning C4244: 'argument': conversion from 'uint16_t' to 'const unsigned char', possible loss of data
+  Generating Code...
+  ice.vcxproj -> D:\project\ice\x64\Debug\ice.exe
+  ice.vcxproj -> D:\project\ice\x64\Debug\ice.pdb (Full PDB)

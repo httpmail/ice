@@ -35,12 +35,12 @@ namespace PG {
 
     static uint32_t GenerateRandom32()
     {
-        return GenerateRandom(static_cast<uint32_t>(0), static_cast<uint32_t>(-1));
+        return GenerateRandom(static_cast<uint32_t>(0), UINT32_MAX);
     }
 
     static uint64_t GenerateRandom64()
     {
-        return GenerateRandom(static_cast<uint64_t>(0), static_cast<uint64_t>(-1));
+        return GenerateRandom(static_cast<uint64_t>(0), UINT64_MAX);
     }
 
     template<class T, int, bool b = true>

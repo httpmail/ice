@@ -660,3 +660,5 @@ namespace STUN {
         };
     }
 }
+
+#pragma pack()

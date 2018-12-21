@@ -81,6 +81,9 @@
     <ClInclude Include="inc\sdp.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
+    <ClInclude Include="inc\streamdef.h">
+      <Filter>ice\inc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent.cpp">

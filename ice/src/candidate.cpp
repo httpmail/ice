@@ -7,20 +7,20 @@
 #include "pg_log.h"
 
 namespace STUN {
-    Candidate::Candidate(TypeRef eType, uint8_t compId, uint16_t localPref, bool bUDP,
+    Candidate::Candidate(TypeRef eType, uint8_t compId, uint16_t localPref, ICE::Protocol protocol,
         const std::string & baseIP, uint16_t basePort,
         const std::string & relatedIP, uint16_t relatedPort, const std::string& serverIP):
-        m_TypeRef(eType), m_CompId(compId),
+        m_TypeRef(eType), m_CompId(compId),m_Protocol(protocol),
         m_IP(baseIP),m_Port(basePort), m_RelatedIP(relatedIP),m_RelatedPort(relatedPort),
-        m_Priority(ComputePriority(eType, localPref, compId)), m_Foundation(ComputeFoundations(eType, baseIP, serverIP, bUDP))
+        m_Priority(ComputePriority(eType, localPref, compId)), m_Foundation(ComputeFoundations(eType, baseIP, serverIP, protocol))
     {
     }
 
-    std::string Candidate::ComputeFoundations(TypeRef type, const std::string & baseIP, const std::string & serverIP, bool bUDP)
+    std::string Candidate::ComputeFoundations(TypeRef type, const std::string & baseIP, const std::string & serverIP, ICE::Protocol protocol)
     {
-        char hashInfo[1024];
+        char hashInfo[1024] = "";
 
-        sprintf_s(hashInfo, sizeof(hashInfo), "%s%s%d%d", baseIP.c_str(), serverIP.c_str(), bUDP, type);
+        sprintf_s(hashInfo, sizeof(hashInfo), "%s%s%d%d", baseIP.c_str(), serverIP.c_str(), protocol, type);
         try
         {
             return boost::lexical_cast<std::string>(std::hash<std::string>{}(hashInfo));

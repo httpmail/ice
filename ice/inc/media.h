@@ -4,15 +4,18 @@
 #include "stream.h"
 
 namespace ICE {
-    class Media {
+
+    class CAgentConfig;
+
+    class Media{
     public:
-        enum class ClassicID : uint16_t{
+        enum class ClassicID : uint8_t{
             RTP = 1,
             RTCP,
         };
 
     public:
-        using StreamContainer = std::map<uint16_t, Stream*>;
+        using StreamContainer = std::map<uint8_t, Stream*>; /*key = component id*/
 
     public:
         Media();
@@ -22,10 +25,12 @@ namespace ICE {
         const Stream* GetStreamById(uint16_t id) const;
         const std::string& IcePwd() const { return m_icepwd; }
         const std::string& IceUfrag() const { return m_iceufrag; }
+        bool CreateStream(uint8_t compId, Protocol protocol, const std::string& hostIP, uint16_t port, const CAgentConfig& config);
 
     private:
         StreamContainer     m_Streams;
         const std::string   m_icepwd;
         const std::string   m_iceufrag;
+
     };
 }

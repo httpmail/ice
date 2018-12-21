@@ -25,6 +25,15 @@ namespace PG {
     MsgEntity::~MsgEntity()
     {
         Close();
+        std::lock_guard<decltype(m_listeners_mutex)> locker(m_listeners_mutex);
+        for (auto itor = m_listeners.begin(); itor != m_listeners.end(); ++itor)
+        {
+            if (itor->second != nullptr)
+            {
+                assert(0 == itor->second->size());
+                delete itor->second;
+            }
+        }
     }
 
     void MsgEntity::Close()
@@ -129,11 +138,9 @@ namespace PG {
         auto itor = m_listeners.find(msgId);
         if (itor != m_listeners.end())
         {
-            while (!itor->second->empty())
-            {
-                auto listener = itor->second->begin();
-                (*listener)->OnEventFired(this, msgId, wParam, lParam);
-            }
+            std::for_each(itor->second->begin(), itor->second->end(), [this, msgId, wParam, lParam](auto &listener) {
+                listener->OnEventFired(this, msgId, wParam, lParam);
+            });
         }
     }
 

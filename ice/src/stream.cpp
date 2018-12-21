@@ -4,11 +4,12 @@
 #include "agent.h"
 #include "channel.h"
 #include "pg_log.h"
+#include <iostream>
 
 namespace ICE {
-    Stream::Stream(uint8_t compId, Pipline pipline, uint16_t localPref, const std::string & hostIp, uint16_t hostPort) :
-        m_CompId(compId), m_Pipline(pipline), m_LocalPref(localPref), m_HostIP(hostIp), m_HostPort(hostPort), m_State(State::Init), m_Quit(false),
-        m_GatherEventSub(this)
+    Stream::Stream(uint8_t compId, Protocol protocol, uint16_t localPref, const std::string & hostIp, uint16_t hostPort) :
+        m_CompId(compId), m_Protocol(protocol), m_LocalPref(localPref), m_HostIP(hostIp), m_HostPort(hostPort), m_State(State::Init), m_Quit(false),
+        m_GatherEventSub(this), m_PendingGatherCnt(0)
     {
         assert(hostPort);
         RegisterEvent(static_cast<PG::MsgEntity::MSG_ID>(Message::Gathering));
@@ -29,7 +30,11 @@ namespace ICE {
     bool Stream::GatheringCandidate(const CAgentConfig& config)
     {
         // step 1> gather host candidate
-        GatherHostCandidate(m_HostIP, m_HostPort, m_Pipline);
+        if (!GatherHostCandidate(m_HostIP, m_HostPort, m_Protocol))
+        {
+            LOG_ERROR("Stream", "Gather Host Candidate Failed");
+            return false;
+        }
 
         auto &stun_server   = config.StunServer();
         auto &port_range    = config.GetPortRange();
@@ -51,23 +56,24 @@ namespace ICE {
 
         if(!m_GatherThrd.joinable())
             m_GatherThrd = std::thread(Stream::WaitGatheringDoneThread, this);
+
         return true;
     }
 
-    bool Stream::GatherHostCandidate(const std::string & ip, uint16_t port, Pipline pipline)
+    bool Stream::GatherHostCandidate(const std::string & ip, uint16_t port, Protocol protocol)
     {
         std::auto_ptr<Channel> channel(nullptr);
-        switch (pipline)
+        switch (protocol)
         {
-        case ICE::Stream::Pipline::udp:
+        case Protocol::udp:
             channel.reset(CreateChannel<UDPChannel>(ip, port));
             break;
 
-        case ICE::Stream::Pipline::passive_tcp:
+        case Protocol::tcp_pass:
             channel.reset(CreateChannel<TCPPassiveChannel>(ip, port));
             break;
 
-        case ICE::Stream::Pipline::active_tcp:
+        case Protocol::tcp_act:
             channel.reset(CreateChannel<TCPActiveChannel>(ip, port));
             break;
 
@@ -80,9 +86,8 @@ namespace ICE {
 
         std::auto_ptr<STUN::HostCandidate> cand(new STUN::HostCandidate(m_CompId, m_LocalPref, ip, port));
 
-        if (!cand.get())
+        if(!cand.get())
             return false;
-
         {
             std::lock_guard<decltype(m_CandsMutex)> locker(m_CandsMutex);
             if (m_Cands.insert(std::make_pair(cand.get(), channel.get())).second)
@@ -93,6 +98,7 @@ namespace ICE {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -170,7 +176,7 @@ namespace ICE {
                     std::lock_guard<decltype(pThis->m_CandsMutex)> locker(pThis->m_CandsMutex);
                     if (pThis->m_Cands.insert(std::make_pair(cand.get(), helper->m_Channel)).second)
                     {
-                        LOG_INFO("Stream", "SrflxCandidate Created, [%s:%d]", helper->m_Channel->IP(), helper->m_Channel->Port());
+                        LOG_INFO("Stream", "SrflxCandidate Created, [%s:%d]", helper->m_Channel->IP().c_str(), helper->m_Channel->Port());
                         cand.release();
                     }
                 }
@@ -178,6 +184,7 @@ namespace ICE {
             (*itor)->Unsubscribe(&pThis->m_GatherEventSub);
         }
         pThis->m_StunPendingGather.clear();
+        pThis->NotifyListener(static_cast<uint16_t>(Message::Gathering), (WPARAM)pThis, (LPARAM)(pThis->m_Cands.size() > 0));
     }
 
     ////////////////////////////// GatherHelper class //////////////////////////////
@@ -187,7 +194,7 @@ namespace ICE {
         assert(timeout.size());
         assert(channel);
         assert(pMsg);
-        this->RegisterMsg(static_cast<uint16_t>(PubEvent::GatheringEvent));
+        RegisterMsg(static_cast<uint16_t>(PubEvent::GatheringEvent));
     }
 
     Stream::StunGatherHelper::~StunGatherHelper()
@@ -299,14 +306,11 @@ namespace ICE {
                 LOG_INFO("Stream", "Gather Candidate result :%d, [%s:%d]", pThis->m_Status, pThis->m_RelatedIP.c_str(), pThis->m_RelatedPort);
                 break;
             }
-            else
-                pThis->m_Status = Status::failed;
-
             LOG_WARNING("Stream", "send 1st to stun :%s timout, try again()", pThis->m_Channel->PeerIP().c_str());
         }
 
         pThis->m_Channel->Shutdown(Channel::ShutdownType::both);  // close channel to wakeup recv thread
-        pThis->Publish(static_cast<uint16_t>(PubEvent::GatheringEvent), (WPARAM)(pThis->m_Status == Status::succeed), nullptr);
+        pThis->Publish(static_cast<uint16_t>(PubEvent::GatheringEvent), (WPARAM)(pThis->m_Status == Status::succeed), 0);
     }
 
     Stream::GatherEventSubsciber::GatherEventSubsciber(Stream * pOwner) :
