@@ -22,7 +22,7 @@ namespace ICE {
         virtual ~Media();
 
         const StreamContainer& GetStreams() const { return m_Streams; }
-        const Stream* GetStreamById(uint16_t id) const;
+        const Stream* GetStreamById(uint8_t id) const;
         const std::string& IcePwd() const { return m_icepwd; }
         const std::string& IceUfrag() const { return m_iceufrag; }
         bool CreateStream(uint8_t compId, Protocol protocol, const std::string& hostIP, uint16_t port, const CAgentConfig& config);

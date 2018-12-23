@@ -3,14 +3,15 @@
 #include <map>
 #include "streamdef.h"
 
+namespace STUN {
+    class Candidate;
+}
+
 namespace ICE {
     class CAgentConfig;
     class Media;
     class Session
     {
-    public:
-        using MediaContainer = std::map<std::string, const Media*>;
-
     public:
         class SessionConfig {
         public:
@@ -88,6 +89,25 @@ namespace ICE {
         };
 
     public:
+        class CandidatePeer {
+        public:
+            CandidatePeer(uint64_t PRI, const STUN::Candidate* lcand, const STUN::Candidate* rcand);
+            virtual ~CandidatePeer();
+
+            void Priority(uint64_t pri) { m_PRI = pri; }
+            uint64_t Priority() const { return m_PRI; }
+
+        private:
+            uint64_t m_PRI;
+            const STUN::Candidate *m_LCand;
+            const STUN::Candidate *m_RCand;
+        };
+
+    public:
+        using CandPeerContainer = std::map<uint64_t, CandidatePeer>;/*@uint32_t : PRI*/
+        using MediaContainer = std::map<std::string, const Media*>;
+
+    public:
         Session(const std::string& defaultIP);
         virtual ~Session();
 
@@ -101,5 +121,6 @@ namespace ICE {
     private:
         SessionConfig           m_Config;
         MediaContainer          m_Medias;
+        CandPeerContainer       m_CandPeers;
     };
 }

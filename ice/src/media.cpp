@@ -36,7 +36,7 @@ namespace ICE {
     {
     }
 
-    const Stream* Media::GetStreamById(uint16_t id) const
+    const Stream* Media::GetStreamById(uint8_t id) const
     {
         assert(id >= static_cast<uint16_t>(ClassicID::RTP));
 

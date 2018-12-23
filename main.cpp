@@ -34,7 +34,6 @@ int main()
     config.AddStunServer("216.93.246.18", 3478);
 
     Endpoint ep(config.DefaultIP());
-
     ICE::Session session(config.DefaultIP());
     ICE::MediaAttr videoMedia = {
         "video",

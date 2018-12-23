@@ -75,10 +75,10 @@
     <ClInclude Include="..\pg\inc\pg_util.h">
       <Filter>pg\inc</Filter>
     </ClInclude>
-    <ClInclude Include="inc\stream.h">
+    <ClInclude Include="inc\sdp.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
-    <ClInclude Include="inc\sdp.h">
+    <ClInclude Include="inc\stream.h">
       <Filter>ice\inc</Filter>
     </ClInclude>
     <ClInclude Include="inc\streamdef.h">
@@ -129,10 +129,11 @@
     <ClCompile Include="..\pg\inc\pg_buffer.cpp">
       <Filter>pg\src</Filter>
     </ClCompile>
-    <ClCompile Include="src\stream.cpp">
+    <ClCompile Include="..\pg\src\pg_listener.cpp" />
+    <ClCompile Include="src\sdp.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
-    <ClCompile Include="src\sdp.cpp">
+    <ClCompile Include="src\stream.cpp">
       <Filter>ice\src</Filter>
     </ClCompile>
   </ItemGroup>

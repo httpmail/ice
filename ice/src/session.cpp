@@ -11,51 +11,45 @@
 #include <assert.h>
 
 namespace {
-    bool FormingCandidatePairs(const ICE::Session::MediaContainer& local_medias, const CSDP::RemoteMediaContainer& remote_medias, bool bControlling)
+    using namespace ICE;
+    bool FormingCandidatePairs(Session::CandPeerContainer& candPeers, const Media &lMedia, const CSDP::RemoteMedia& rMedia, bool bControlling)
     {
-        for (auto lmedias_itor = local_medias.begin(); lmedias_itor != local_medias.end(); ++lmedias_itor)
+        auto lstream_container = lMedia.GetStreams();
+        auto rcands_container = rMedia.Candidates();
+
+        for (auto lstream_itor = lstream_container.begin(); lstream_itor != lstream_container.end(); ++lstream_itor)
         {
-            // find the same type media
-            auto &media_name = lmedias_itor->first;
-            auto rmedias_itor = remote_medias.find(media_name);
-            if (rmedias_itor == remote_medias.end())
+            auto rcands_itor = rcands_container.find(lstream_itor->first);
+            if (rcands_itor == rcands_container.end())
             {
-                LOG_ERROR("Session", "remote has no [%s] media", media_name.c_str());
+                LOG_ERROR("Session", "remote candidates has no corresponding +local candidate [%d]", lstream_itor->first);
                 return false;
             }
 
-            // find the same component id stream
-            auto rcandContainer   = rmedias_itor->second->Candidates();
-            auto lstreams = lmedias_itor->second->GetStreams();
-            for (auto lstream_itor = lstreams.begin(); lstream_itor != lstreams.end(); ++lstream_itor)
+            auto rcands_container = rcands_itor->second;
+            assert(rcands_container);
+
+            auto &lstream = lstream_itor->second;
+            assert(lstream);
+
+            auto lcands_container = lstream->GetCandidates();
+            for (auto rcand_itor = rcands_container->begin(); rcand_itor != rcands_container->end(); ++rcands_itor)
             {
-                auto lcompId = lstream_itor->first;
-                auto rcands_itor = rcandContainer.find(lcompId);
+                auto rcand = *rcand_itor;
+                assert(rcand);
 
-                if (rcands_itor == rcandContainer.end())
+                for (auto lcand_itor = lcands_container.begin(); lcand_itor != lcands_container.end(); ++lcand_itor)
                 {
-                    LOG_ERROR("Session", "[%s] media no realted component id", media_name.c_str());
-                    return false;
-                }
+                    auto lcand = lcand_itor->first;
+                    assert(lcand && lcand->ComponentId() == lstream_itor->first);
+                    assert(lcand->ComponentId() == rcand->ComponentId());
 
-                auto rcands = rcands_itor->second;
-                auto lcands = lstream_itor->second->GetCandidates();
-
-                for (auto rcand_itor = rcands->begin(); rcand_itor != rcands->end(); ++rcand_itor)
-                {
-                    auto rcand = *rcand_itor;
-                    for (auto lcand_itor = lcands.begin(); lcand_itor != lcands.end(); ++lcand_itor)
+                    auto lcand_family = boost::asio::ip::address::from_string(lcand->TransationIP()).is_v4();
+                    auto rcand_family = boost::asio::ip::address::from_string(rcand->TransationIP()).is_v4();
+                    if ((lcand_family == rcand_family) &&
+                        (lcand->Protocol() == rcand->Protocol() && lcand->Protocol() == Protocol::udp) ||
+                        (lcand->Protocol() != rcand->Protocol() && lcand->Protocol() != Protocol::udp && rcand->Protocol() != Protocol::udp))
                     {
-                        auto lcand = lcand_itor->first;
-                        assert(rcand->ComponentId() == lcand->ComponentId());
-
-                        bool bSameProtocol = rcand->Protocol() == lcand->Protocol();
-                        if (
-                           ( bSameProtocol && rcand->Protocol() != ICE::Protocol::udp ) ||
-                           (!bSameProtocol && (rcand->Protocol() == ICE::Protocol::udp || lcand->Protocol() == ICE::Protocol::udp)))
-                        {
-                            continue;
-                        }
                         /*
                         RFC8445[6.1.2.3.  Computing Pair Priority and Ordering Pairs]
                         Let G be the priority for the candidate provided by the controlling agent.
@@ -66,11 +60,17 @@ namespace {
                         auto D = bControlling ? rcand->Priority() : lcand->Priority();
 
                         uint64_t priority = ((uint64_t)1 << 32) * std::min(G, D) + 2 * std::max(G, D) + (G > D ? 1 : 0);
-
+                        auto itor = candPeers.find(priority);
+                        assert(itor == candPeers.end());
+                        if (candPeers.insert(std::make_pair(priority, Session::CandidatePeer(priority, lcand, rcand))).second)
+                        {
+                            LOG_ERROR("Session", "Cannot Create Peer");
+                        }
                     }
                 }
             }
         }
+        return true;
     }
 }
 
@@ -176,5 +176,16 @@ namespace ICE {
     bool Session::MakeAnswer(const std::string & remoteOffer, std::string & answer)
     {
         return true;
+    }
+    Session::CandidatePeer::CandidatePeer(uint64_t PRI, const STUN::Candidate * lcand, const STUN::Candidate * rcand)
+    {
+        assert(lcand && rcand);
+        assert(lcand->ComponentId() == rcand->ComponentId());
+        assert((lcand->Protocol() == rcand->Protocol() && lcand->Protocol() == Protocol::udp) ||
+            (lcand->Protocol() != rcand->Protocol() && lcand->Protocol() != Protocol::udp && rcand->Protocol() != Protocol::udp));
+    }
+
+    Session::CandidatePeer::~CandidatePeer()
+    {
     }
 }
