@@ -40,7 +40,7 @@ namespace{
                 candidates unless the application using ICE does not support IPv4
                 (i.e., it is an IPv6-only application [RFC4038]).
                 */
-
+                continue;
                 auto ipv6 = ep_address.to_v6();
                 if (ipv6.is_v4_compatible() || ipv6.is_site_local() || ipv6.is_link_local() || (bSupportIPv4 && ipv6.is_v4_mapped()))
                     continue;

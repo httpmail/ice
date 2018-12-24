@@ -168,8 +168,8 @@ namespace ICE {
             {
                 std::auto_ptr<STUN::SrflxCandidate> cand(new STUN::SrflxCandidate(pThis->m_CompId,
                     pThis->m_LocalPref,
-                    helper->m_Channel->IP(), helper->m_Channel->Port(),
-                    helper->m_RelatedIP, helper->m_RelatedPort, helper->m_StunIP));
+                    helper->m_RelatedIP, helper->m_RelatedPort,
+                    helper->m_Channel->IP(), helper->m_Channel->Port(), helper->m_StunIP));
 
                 if (cand.get())
                 {

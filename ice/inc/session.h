@@ -1,6 +1,8 @@
 #pragma once
 
 #include <map>
+#include <assert.h>
+
 #include "streamdef.h"
 
 namespace STUN {
@@ -97,6 +99,12 @@ namespace ICE {
             void Priority(uint64_t pri) { m_PRI = pri; }
             uint64_t Priority() const { return m_PRI; }
 
+            void LCandidate(const STUN::Candidate* lcand) { assert(lcand); m_LCand = lcand; }
+            const STUN::Candidate& LCandidate() const { assert(m_LCand); return *m_LCand; }
+
+            void RCandidate(const STUN::Candidate* rcand) { assert(rcand); m_RCand = rcand; }
+            const STUN::Candidate& RCandidate() const { assert(m_RCand); return *m_RCand; }
+
         private:
             uint64_t m_PRI;
             const STUN::Candidate *m_LCand;
@@ -106,6 +114,7 @@ namespace ICE {
     public:
         using CandPeerContainer = std::map<uint64_t, CandidatePeer>;/*@uint32_t : PRI*/
         using MediaContainer = std::map<std::string, const Media*>;
+        using MediaCandPairs = std::map<std::string, CandPeerContainer*>;
 
     public:
         Session(const std::string& defaultIP);
@@ -121,6 +130,6 @@ namespace ICE {
     private:
         SessionConfig           m_Config;
         MediaContainer          m_Medias;
-        CandPeerContainer       m_CandPeers;
+        MediaCandPairs          m_MediaCandPairs;
     };
 }
