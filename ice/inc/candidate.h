@@ -5,156 +5,93 @@
 #include <assert.h>
 #include "streamdef.h"
 
-namespace STUN {
+namespace ICE {
     class Candidate {
     public:
-        enum class TypeRef {
-            /*RFC8445 5.1.2.2.  Guidelines for Choosing Type and Local Preferences*/
-            server_reflexive = 100,
-            relayed = 0,
-            host = 126,
-            peer_reflexive = 110,
+        /*RFC8445 5.1.2.2.  Guidelines for Choosing Type and Local Preferences*/
+        enum class CandType{
+            svr_ref     = 100,
+            relayed     = 0,
+            host        = 126,
+            peer_ref    = 110,
         };
 
-    public:
-        Candidate(TypeRef eType, uint8_t compId, uint16_t localPref, ICE::Protocol protocol,
-            const std::string& baseIP, uint16_t basePort,
-            const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP);
-        
-        Candidate(TypeRef eType, ICE::Protocol protocol, uint8_t compId, uint32_t pri, const std::string& foundation,
-            const std::string& baseIP, uint16_t basePort,
-            const std::string& relatedIP, uint16_t relatedPort):
-            m_TypeRef(eType), m_CompId(compId), m_Priority(pri),
-            m_IP(baseIP),m_Port(basePort),
-            m_RelatedIP(relatedIP), m_RelatedPort(relatedPort),
-            m_Foundation(foundation),
-            m_Protocol(protocol)
+        Candidate(CandType type, uint32_t pri, uint32_t foundation,
+            const std::string& connIP, uint16_t connPort,
+            const std::string& baseIP, uint16_t basePort) :
+            m_CandType(type),m_Priority(pri),m_Foundation(foundation),
+            m_ConnIP(connIP),m_BaseIP(baseIP),m_ConnPort(connPort),m_BasePort(basePort)
         {
+            assert(baseIP.length() && connIP.length() && connPort && basePort);
         }
 
-        virtual ~Candidate() = 0 {}
-
-        const std::string& Foundation()   const { return m_Foundation; }
-        uint32_t           Priority()     const { return m_Priority; }
-        uint16_t           ComponentId()  const { return m_CompId; }
-        ICE::Protocol      Protocol()     const { return m_Protocol; }
-
-        const std::string& TransationIP() const { return m_IP;  }
-        uint16_t TransationPort()         const { return m_Port;}
-
-        const std::string& RelatedIP() const { return m_RelatedIP; }
-        uint16_t RelatedPort()         const { return m_RelatedPort; }
-
-        std::string TypeName() const;
-
-        bool IsHost() const { return m_TypeRef == TypeRef::host; }
-
-    protected:
-        static uint32_t ComputePriority(TypeRef type, uint32_t localPref, uint8_t comp_id)
+        static uint32_t ComputePriority(CandType type, uint32_t localPref, uint8_t comp_id)
         {
             return ((static_cast<uint8_t>(type) & 0xFF) << 24) + ((localPref & 0xFFFF) << 8) + (((256 - comp_id) & 0xFF) << 0);
         }
 
-        static std::string ComputeFoundations(TypeRef type, const std::string& baseIP, const std::string& serverIP, ICE::Protocol protocol);
-
-    private:
-        const std::string m_IP;
-        const std::string m_RelatedIP;
-        const std::string m_Foundation;
-
-        const uint32_t    m_Priority;
-        const uint16_t    m_Port;
-        const uint16_t    m_RelatedPort;
-
-        const TypeRef  m_TypeRef;
-        const uint8_t  m_CompId;
-        const ICE::Protocol  m_Protocol;
+        static uint32_t ComputeFoundations(CandType type, const std::string& baseIP, const std::string& serverIP, ICE::Protocol protocol);
+    public:
+        CandType       m_CandType;
+        const uint32_t m_Priority;
+        const uint32_t m_Foundation;
+        const uint16_t m_ConnPort;
+        const uint16_t m_BasePort;
+        const std::string m_ConnIP;
+        const std::string m_BaseIP;
     };
 
-    class HostCandidate : public Candidate {
+    class HostCand : public Candidate {
     public:
-        HostCandidate(uint8_t compId, uint16_t localPref,
+        HostCand(uint32_t pri, uint32_t foundation,
+            const std::string& connIP, uint16_t connPort,
             const std::string& baseIP, uint16_t basePort) :
-            Candidate(TypeRef::host, compId, localPref, ICE::Protocol::udp, baseIP, basePort, baseIP, basePort, baseIP)
-        {
-        }
-        
-        HostCandidate(uint8_t compId, uint32_t pri, const std::string& foundation, const std::string& ip, uint16_t port):
-            Candidate(TypeRef::host, ICE::Protocol::udp, compId, pri, foundation, ip, port, ip, port)
-        {
-        }
-
-        virtual ~HostCandidate() {}
+            Candidate(CandType::host, pri, foundation, connIP, connPort, baseIP, basePort)
+        {}
     };
 
-    class ActiveCandidate : public Candidate {
+    class ActiveCand : public Candidate {
     public:
-        ActiveCandidate(uint8_t compId, uint16_t localPref,
-            const std::string& baseIP, uint16_t basePort,
-            const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP) :
-            Candidate(TypeRef::host, compId, localPref, ICE::Protocol::tcp_act, baseIP, basePort, relatedIP, relatedPort, serverIP)
-        {
-        }
-        ActiveCandidate(uint8_t compId, uint32_t pri, const std::string& foundation,const std::string& ip, uint16_t port) :
-            Candidate(TypeRef::host, ICE::Protocol::tcp_act, compId, pri, foundation, ip, port, ip, port)
-        {
-        }
-
-        virtual ~ActiveCandidate() {}
+        ActiveCand(uint32_t pri, uint32_t foundation,
+            const std::string& connIP, uint16_t connPort,
+            const std::string& baseIP, uint16_t basePort) :
+            Candidate(CandType::host, pri, foundation, connIP, connPort, baseIP, basePort)
+        {}
     };
 
-    class PassiveCandidate : public Candidate {
+    class PassiveCand : public Candidate {
     public:
-        PassiveCandidate(uint8_t compId, uint16_t localPref,
-            const std::string& baseIP, uint16_t basePort,
-            const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP) :
-            Candidate(TypeRef::host, compId, localPref, ICE::Protocol::tcp_pass, baseIP, basePort, relatedIP, relatedPort,serverIP)
-        {
-        }
-        
-        PassiveCandidate(uint8_t compId, uint32_t pri, const std::string& foundation, const std::string& ip, uint16_t port) :
-            Candidate(TypeRef::host, ICE::Protocol::tcp_pass, compId, pri, foundation, ip, port, ip, port)
-        {
-        }
-
-        virtual ~PassiveCandidate() {}
+        PassiveCand(uint32_t pri, uint32_t foundation,
+            const std::string& connIP, uint16_t connPort,
+            const std::string& baseIP, uint16_t basePort) :
+            Candidate(CandType::host, pri, foundation, connIP, connPort, baseIP, basePort)
+        {}
     };
 
-    class SrflxCandidate : public Candidate {
+    class SvrCand : public Candidate {
     public:
-        SrflxCandidate(uint8_t compId, uint16_t localPref,
-            const std::string& baseIP, uint16_t basePort,
-            const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP):
-            Candidate(TypeRef::server_reflexive, compId, localPref, ICE::Protocol::udp, baseIP, basePort, relatedIP, relatedPort, serverIP)
-        {
-        }
-        
-        SrflxCandidate(uint8_t compId, uint32_t pri, const std::string& foundation,
-            const std::string& baseIP, uint16_t basePort,
-            const std::string& relatedIP, uint16_t relatedPort) :
-            Candidate(TypeRef::server_reflexive, ICE::Protocol::udp, compId, pri, foundation, baseIP, basePort, relatedIP, relatedPort)
-        {
-        }
-
-        virtual ~SrflxCandidate() {}
+        SvrCand(uint32_t pri, uint32_t foundation,
+            const std::string& connIP, uint16_t connPort,
+            const std::string& baseIP, uint16_t basePort) :
+            Candidate(CandType::svr_ref, pri, foundation, connIP, connPort, baseIP, basePort)
+        {}
     };
 
-    class RelayedCandidate : public Candidate {
+    class PeerCand : public Candidate {
     public:
-        RelayedCandidate(uint8_t compId, uint16_t localPref,
-            const std::string& baseIP, uint16_t basePort,
-            const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP) :
-            Candidate(TypeRef::relayed, compId, localPref, ICE::Protocol::udp, baseIP, basePort, relatedIP, relatedPort, serverIP)
-        {
-        }
-
-        RelayedCandidate(uint8_t compId, uint32_t pri, const std::string& foundation,
-            const std::string& baseIP, uint16_t basePort,
-            const std::string& relatedIP, uint16_t relatedPort) :
-            Candidate(TypeRef::relayed, ICE::Protocol::udp, compId, pri, foundation, baseIP, basePort, relatedIP, relatedPort)
-        {
-        }
-        virtual ~RelayedCandidate() {}
+        PeerCand(uint32_t pri, uint32_t foundation,
+            const std::string& connIP, uint16_t connPort,
+            const std::string& baseIP, uint16_t basePort) :
+            Candidate(CandType::peer_ref, pri, foundation, connIP, connPort, baseIP, basePort)
+        {}
     };
 
+    class RelayedCand : public Candidate {
+    public:
+        RelayedCand(uint32_t pri, uint32_t foundation,
+            const std::string& connIP, uint16_t connPort,
+            const std::string& baseIP, uint16_t basePort) :
+            Candidate(CandType::relayed, pri, foundation, connIP, connPort, baseIP, basePort)
+        {}
+    };
 }

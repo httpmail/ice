@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <string>
 
-namespace STUN {
+namespace ICE {
     class Candidate;
 }
 
@@ -18,7 +18,7 @@ class CSDP {
 public:
     class RemoteMedia {
     public:
-        using CandContainer     = std::unordered_set<const STUN::Candidate*>;
+        using CandContainer     = std::unordered_set<ICE::Candidate*>;
         using ComponentCands    = std::unordered_map<uint8_t, CandContainer*>;
 
     public:

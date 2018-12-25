@@ -109,9 +109,14 @@ namespace SDPDEF {
         return isIPv4 ? ipv4 : ipv6;
     }
 
-    const char* Transport(bool isUDP)
+    const char* GetProtocolName(ICE::Protocol protocol)
     {
-        return isUDP ? "UDP" : "TCP";
+        if (ICE::Protocol::tcp_pass == protocol)
+            return  TCP_PASS.c_str();
+        else if (ICE::Protocol::tcp_act == protocol)
+            return TCP_ACT.c_str();
+        else
+            return UDP.c_str();
     }
 
     bool IsValidAttrPos(std::string::size_type pos)
@@ -130,6 +135,19 @@ namespace SDPDEF {
     bool IsValidAddrType(const std::string& addr)
     {
         return addr == ipv4 || addr == ipv6;
+    }
+
+    const char* GetCandidateTypeName(ICE::Candidate::CandType eType)
+    {
+        using namespace ICE;
+        if (Candidate::CandType::peer_ref == eType)
+            return prflx_cand_type.c_str();
+        else if (Candidate::CandType::svr_ref == eType)
+            return srflx_cand_type.c_str();
+        else if (Candidate::CandType::relayed == eType)
+            return relay_cand_type.c_str();
+        else
+            return host_cand_type.c_str();
     }
 }
 
@@ -286,31 +304,33 @@ bool CSDP::Encode(const ICE::Session & session, std::string& offer)
         for (auto stream_itor = Streams.begin(); stream_itor != Streams.end(); ++stream_itor)
         {
             auto& cands = stream_itor->second->GetCandidates();
-            const char* transport = SDPDEF::Transport(stream_itor->second->IsUDP());
+            auto compId = stream_itor->first;
+            const char* transport = SDPDEF::GetProtocolName(stream_itor->second->GetProtocol());
 
-            for (auto& cand = cands.begin(); cand != cands.end(); ++cand)
+            for (auto& cand_itor = cands.begin(); cand_itor != cands.end(); ++cand_itor)
             {
+                auto cand = cand_itor->first;
                 /*
                 rfc5245
                 15.1.  "candidate" Attribute
                 */
                 offer_stream << SDPDEF::candidate_line
-                    << cand->first->Foundation() << " "
-                    << cand->first->ComponentId() << " "
+                    << cand->m_Foundation << " "
+                    << compId << " "
                     << transport << " "
-                    << cand->first->Priority() << " "
-                    << cand->first->TransationIP() << " "
-                    << cand->first->TransationPort() << " "
+                    << cand->m_Priority << " "
+                    << cand->m_ConnIP << " "
+                    << cand->m_ConnPort << " "
                     << SDPDEF::candtype << " "
-                    << cand->first->TypeName();
+                    << SDPDEF::GetCandidateTypeName(cand->m_CandType);
 
-                if (!cand->first->IsHost())
+                if (ICE::Candidate::CandType::host != cand->m_CandType)
                 {
                     offer_stream << " "
                         << SDPDEF::reladdr << " "
-                        << cand->first->RelatedIP() << " "
+                        << cand->m_BaseIP << " "
                         << SDPDEF::relport << " "
-                        << cand->first->RelatedPort();
+                        << cand->m_BasePort;
                 }
                 offer_stream << SDPDEF::CRLF;
             }

@@ -10,7 +10,7 @@
 #include "pg_msg.h"
 #include "pg_log.h"
 
-namespace STUN {
+namespace ICE {
     class Candidate;
 }
 
@@ -26,7 +26,7 @@ namespace ICE {
         };
 
     public:
-        using CandidateContainer = std::unordered_map<STUN::Candidate*, ICE::Channel*>;
+        using CandidateContainer = std::unordered_map<ICE::Candidate*, ICE::Channel*>;
 
     public:
         Stream(uint8_t compId, Protocol protocol, uint16_t localPref, const std::string& hostIp, uint16_t hostPort);
@@ -41,7 +41,8 @@ namespace ICE {
         std::string GetFmtDescription() const { return "0"; }
         const CandidateContainer& GetCandidates() const { return m_Cands; }
         bool IsUDP() const { return m_Protocol == Protocol::udp;}
-
+        Protocol GetProtocol() const { return m_Protocol; }
+        uint8_t ComponentId() const { return m_CompId; }
     public:
         template<class T>
         static T* CreateChannel(const std::string& ip, uint16_t port)
