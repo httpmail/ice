@@ -462,7 +462,7 @@ CSDP::RemoteMedia* CSDP::DecodeMediaLine(const std::string & mediaLine, bool bSe
         try
         {
             priority = boost::lexical_cast<uint32_t>(cand_content[static_cast<uint16_t>(SDPDEF::CandAttrIndex::priority)]);
-            compId = boost::lexical_cast<uint32_t>(cand_content[static_cast<uint8_t>(SDPDEF::CandAttrIndex::compId)]);
+            compId = boost::lexical_cast<uint8_t>(cand_content[static_cast<uint8_t>(SDPDEF::CandAttrIndex::compId)]);
             conn_port = boost::lexical_cast<uint16_t>(cand_content[static_cast<uint16_t>(SDPDEF::CandAttrIndex::conn_port)]);
             if (!isHostCand)
                 conn_rport = boost::lexical_cast<uint16_t>(cand_content[static_cast<uint16_t>(SDPDEF::CandAttrIndex::conn_rport)]);
@@ -702,7 +702,7 @@ bool CSDP::RemoteMedia::AddPrflxCandidate(uint8_t compId, uint32_t pri, const st
 
 bool CSDP::RemoteMedia::AddRelayCandidate(uint8_t compId, uint32_t pri, const std::string & foundation, const std::string & baseIP, uint16_t basePort, const std::string & relatedIP, uint16_t relatedPort)
 {
-    std::auto_ptr<STUN::RelayedCandidate> cand(new STUN::RelayedCandidate(compId, pri, foundation,relatedIP, relatedPort));
+    std::auto_ptr<STUN::RelayedCandidate> cand(new STUN::RelayedCandidate(compId, pri, foundation, baseIP, basePort, relatedIP, relatedPort));
 
     if (cand.get() && AddCandidate(compId, cand.get()))
     {
@@ -743,5 +743,6 @@ bool CSDP::RemoteMedia::AddCandidate(uint8_t compId, STUN::Candidate *can)
         LOG_ERROR("Session", "Add Candidate Failed");
         return false;
     }
+
     return true;
 }

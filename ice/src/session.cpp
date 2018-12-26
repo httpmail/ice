@@ -7,7 +7,6 @@
 #include "pg_log.h"
 
 #include <boost/asio.hpp>
-#include <iostream>
 
 #include <assert.h>
 
@@ -15,27 +14,26 @@ namespace {
     using namespace ICE;
     bool FormingCandidatePairs(Session::CandPeerContainer& candPeers, const Media &lMedia, const CSDP::RemoteMedia& rMedia, bool bControlling)
     {
-        auto &lstream_container = lMedia.GetStreams();
-        auto &rcomp_cands_container = rMedia.Candidates();
+        auto lstream_container = lMedia.GetStreams();
+        auto rcands_container = rMedia.Candidates();
 
         for (auto lstream_itor = lstream_container.begin(); lstream_itor != lstream_container.end(); ++lstream_itor)
         {
-            auto rcomp_cands_itor = rcomp_cands_container.find(lstream_itor->first);
-            if (rcomp_cands_itor == rcomp_cands_container.end())
+            auto rcands_itor = rcands_container.find(lstream_itor->first);
+            if (rcands_itor == rcands_container.end())
             {
-                LOG_ERROR("Session", "remote candidates has no corresponding local candidate [%d]", lstream_itor->first);
+                LOG_ERROR("Session", "remote candidates has no corresponding +local candidate [%d]", lstream_itor->first);
                 return false;
             }
 
-            LOG_INFO("Session", "====> Make CompID [%d] pairs ", lstream_itor->first);
-            auto rcands_container = rcomp_cands_itor->second;
+            auto rcands_container = rcands_itor->second;
             assert(rcands_container);
 
             auto &lstream = lstream_itor->second;
             assert(lstream);
 
             auto lcands_container = lstream->GetCandidates();
-            for (auto rcand_itor = rcands_container->begin(); rcand_itor != rcands_container->end(); ++rcand_itor)
+            for (auto rcand_itor = rcands_container->begin(); rcand_itor != rcands_container->end(); ++rcands_itor)
             {
                 auto rcand = *rcand_itor;
                 assert(rcand);
@@ -63,34 +61,10 @@ namespace {
 
                         uint64_t priority = ((uint64_t)1 << 32) * std::min(G, D) + 2 * std::max(G, D) + (G > D ? 1 : 0);
                         auto itor = candPeers.find(priority);
-
                         assert(itor == candPeers.end());
-
-                        // find if there is dumplicate cand peer
-                        bool bAddNewPeer = true;
-                        auto dump_itor = candPeers.begin();
-                        for (; dump_itor != candPeers.end(); ++dump_itor)
+                        if (candPeers.insert(std::make_pair(priority, Session::CandidatePeer(priority, lcand, rcand))).second)
                         {
-                            if (lcand->TransationPort() == dump_itor->second.LCandidate().TransationPort() &&
-                                rcand->TransationPort() == dump_itor->second.RCandidate().TransationPort() &&
-                                lcand->TransationIP() == dump_itor->second.LCandidate().TransationIP() &&
-                                rcand->TransationIP() == dump_itor->second.RCandidate().TransationIP())
-                            {
-                                if (priority > dump_itor->first)
-                                {
-                                    bAddNewPeer = true;
-                                    candPeers.erase(dump_itor);
-                                }
-                                else
-                                {
-                                    bAddNewPeer = false;
-                                }
-                                break;
-                            }
-                        }
-                        if (bAddNewPeer && !candPeers.insert(std::make_pair(priority, Session::CandidatePeer(priority, lcand, rcand))).second)
-                        {
-                            LOG_ERROR("Session", "Insert Peer failed component [%d]", lstream_itor->first);
+                            LOG_ERROR("Session", "Cannot Create Peer");
                         }
                     }
                 }
@@ -148,61 +122,47 @@ namespace ICE {
     bool Session::ConnectivityCheck(const std::string & offer)
     {
         CSDP sdp;
-        if (!sdp.Decode(offer)) 
+        if (!sdp.Decode(offer))
         {
             LOG_ERROR("Session", "Invalid Offer");
             return false;
         }
 
-        LOG_ERROR("Session", "remote offer: %s", offer.c_str());
+        auto& remoteMedia = sdp.GetRemoteMedia();
 
-        auto& RemoteMedias = sdp.GetRemoteMedia();
-
-        for (auto lmedia_itor = m_Medias.begin(); lmedia_itor != m_Medias.end(); ++lmedia_itor)
+        for (auto local_itor = m_Medias.begin(); local_itor != m_Medias.end(); ++local_itor)
         {
-            auto rmedia_itor = RemoteMedias.find(lmedia_itor->first);
-            if (rmedia_itor == RemoteMedias.end())
+
+            auto rmedia_itor = remoteMedia.find(local_itor->first);
+            if (rmedia_itor == remoteMedia.end())
             {
-                LOG_ERROR("Session", "remote media has no [%s] media", lmedia_itor->first.c_str());
+                LOG_ERROR("Session", "local Media[%s] has no corresponding remote media", local_itor->first.c_str());
                 return false;
             }
 
-            assert(m_MediaCandPairs.find(lmedia_itor->first) == m_MediaCandPairs.end());
+            auto& local_stream = local_itor->second->GetStreams();
 
-            std::auto_ptr<CandPeerContainer> CandPeers(new CandPeerContainer);
-            if (!CandPeers.get())
+            for (auto lstream_itor = local_stream.begin(); lstream_itor != local_stream.end(); ++lstream_itor)
             {
-                LOG_ERROR("Session", "out of memory to create candidte peer container [%s]", lmedia_itor->first.c_str());
-                return false;
-            }
+                auto& rcands = rmedia_itor->second->Candidates();
+                for (auto rcand_itor = rcands.begin(); rcand_itor != rcands.end(); ++rcand_itor)
+                {
+                    // find the same component id
+                    auto stream_itor = local_stream.find(rcand_itor->first);
+                    if (stream_itor == local_stream.end())
+                    {
+                        LOG_ERROR("Session", "local media[%s] has no related component id:[%d] ", local_itor->first.c_str(), rcand_itor->first);
+                        return false;
+                    }
 
-            if (!FormingCandidatePairs(*CandPeers.get(), *lmedia_itor->second, *rmedia_itor->second, m_Config.IsControlling()))
-            {
-                LOG_ERROR("Session", "Forming Candidate Pairs failed");
-                return false;
-            }
-
-            if (!m_MediaCandPairs.insert(std::make_pair(lmedia_itor->first, CandPeers.get())).second)
-            {
-                LOG_ERROR("Session", "Insert Media Candidate Pairs failed");
-                return false;
-            }
-            CandPeers.release();
-        }
-
-
-        assert(m_MediaCandPairs.size());
-
-        for (auto media_cand_pairs_itor = m_MediaCandPairs.begin(); media_cand_pairs_itor != m_MediaCandPairs.end(); ++media_cand_pairs_itor)
-        {
-            LOG_INFO("*****", "%s => ", media_cand_pairs_itor->first.c_str());
-
-            for (auto cand_pairs_itor = media_cand_pairs_itor->second->begin(); cand_pairs_itor != media_cand_pairs_itor->second->end(); ++cand_pairs_itor)
-            {
-                auto& lcand = cand_pairs_itor->second.LCandidate();
-                auto& rcand = cand_pairs_itor->second.RCandidate();
-
-                LOG_INFO("*****", "PRI: [%lld] [local: %s:%d, remote:%s,%d]", cand_pairs_itor->first,lcand.TransationIP().c_str(),lcand.TransationPort(), rcand.TransationIP().c_str(), rcand.TransationPort());
+                    auto stream = stream_itor->second;
+                    auto& lcands = stream->GetCandidates();
+                    for (auto lcand_itor = lcands.begin(); lcand_itor != lcands.end(); ++lcand_itor)
+                    {
+                        auto lcand = lcand_itor->first;
+                        assert(lcand->ComponentId() == rcand_itor->first);
+                    }
+                }
             }
         }
     }
@@ -217,8 +177,7 @@ namespace ICE {
     {
         return true;
     }
-    Session::CandidatePeer::CandidatePeer(uint64_t PRI, const STUN::Candidate * lcand, const STUN::Candidate * rcand):
-        m_LCand(lcand),m_RCand(rcand)
+    Session::CandidatePeer::CandidatePeer(uint64_t PRI, const STUN::Candidate * lcand, const STUN::Candidate * rcand)
     {
         assert(lcand && rcand);
         assert(lcand->ComponentId() == rcand->ComponentId());

@@ -6,7 +6,6 @@
 #include "sdp.h"
 #include <boost/asio.hpp>
 #include <thread>
-#include <boost/lexical_cast.hpp>
 
 
 class Endpoint {
@@ -25,15 +24,14 @@ static boost::asio::io_service sIOService;
 static std::mutex sMutex;
 static std::condition_variable sCond;
 static bool bRecved = false;
-static std::string sOffer;
 
 int main() 
 {
     ICE::CAgentConfig config;
     ICE::CAgent agent;
 
-    config.AddStunServer("64.235.154.129",3478);
-    //config.AddStunServer("216.93.246.18", 3478);
+    config.AddStunServer("64.235.150.11",3478);
+    config.AddStunServer("216.93.246.18", 3478);
 
     Endpoint ep(config.DefaultIP());
     ICE::Session session(config.DefaultIP());
@@ -45,7 +43,6 @@ int main()
         }
     };
 
-#if 0
     ICE::MediaAttr audioMedia = {
         "audio",
         {
@@ -53,9 +50,8 @@ int main()
             ICE::MediaAttr::StreamAttr{ ICE::Protocol::udp, 2, 10011, config.DefaultIP() },
         }
     };
-#endif
     std::string offer;
-    if (session.CreateMedia(videoMedia, config))
+    if (session.CreateMedia(videoMedia, config) && (session.CreateMedia(audioMedia, config)))
     {
 
         if (session.MakeOffer(offer))
@@ -69,6 +65,15 @@ int main()
         }
         
         CSDP sdp;
+        if (sdp.Decode(offer))
+        {
+            LOG_INFO("Decode", "Done");
+        }
+        else
+        {
+            LOG_ERROR("Decode", "Error");
+        }
+
         try
         {
             boost::asio::ip::udp::endpoint remoteEp(ep.m_signal_socket.local_endpoint().address(), 32000);
@@ -82,10 +87,7 @@ int main()
                 });
 
                 if (ret)
-                {
-                    session.ConnectivityCheck(sOffer);
                     break;
-                }
             }
         }
         catch (const std::exception&e)
@@ -127,13 +129,22 @@ void Endpoint::RecvThread(Endpoint * pThis)
             boost::system::error_code error;
             auto bytes = pThis->m_signal_socket.receive_from(boost::asio::buffer(buffer, sizeof(buffer)), remoteEp, 0, error);
 
-            if (error)
-                continue;
+            if (boost::asio::error::eof == error)
+                return;
 
             std::lock_guard<decltype(sMutex)> locker(sMutex);
             bRecved = true;
-            sOffer = std::string(buffer, bytes);
-            //LOG_INFO("Recv", "%s", sOffer.c_str());
+            std::string offer(buffer, bytes);
+            LOG_INFO("Recv", "%s", offer.c_str());
+            CSDP sdp;
+            if (sdp.Decode(offer))
+            {
+                LOG_INFO("Decode", "Done");
+            }
+            else
+            {
+                LOG_INFO("Decode", "Failed");
+            }
             sCond.notify_one();
         }
         catch (const std::exception &e)

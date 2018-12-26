@@ -64,7 +64,6 @@ namespace STUN {
 
         const uint32_t    m_Priority;
         const uint16_t    m_Port;
-
         const uint16_t    m_RelatedPort;
 
         const TypeRef  m_TypeRef;
@@ -126,14 +125,14 @@ namespace STUN {
         SrflxCandidate(uint8_t compId, uint16_t localPref,
             const std::string& baseIP, uint16_t basePort,
             const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP):
-            Candidate(TypeRef::server_reflexive,compId, localPref, ICE::Protocol::udp, relatedIP, relatedPort, baseIP, basePort, serverIP)
+            Candidate(TypeRef::server_reflexive, compId, localPref, ICE::Protocol::udp, baseIP, basePort, relatedIP, relatedPort, serverIP)
         {
         }
         
         SrflxCandidate(uint8_t compId, uint32_t pri, const std::string& foundation,
             const std::string& baseIP, uint16_t basePort,
             const std::string& relatedIP, uint16_t relatedPort) :
-            Candidate(TypeRef::server_reflexive, ICE::Protocol::udp, compId, pri, foundation, relatedIP, relatedPort, baseIP, basePort)
+            Candidate(TypeRef::server_reflexive, ICE::Protocol::udp, compId, pri, foundation, baseIP, basePort, relatedIP, relatedPort)
         {
         }
 
@@ -143,14 +142,16 @@ namespace STUN {
     class RelayedCandidate : public Candidate {
     public:
         RelayedCandidate(uint8_t compId, uint16_t localPref,
+            const std::string& baseIP, uint16_t basePort,
             const std::string& relatedIP, uint16_t relatedPort, const std::string& serverIP) :
-            Candidate(TypeRef::relayed, compId, localPref, ICE::Protocol::udp, relatedIP, relatedPort, relatedIP, relatedPort, serverIP)
+            Candidate(TypeRef::relayed, compId, localPref, ICE::Protocol::udp, baseIP, basePort, relatedIP, relatedPort, serverIP)
         {
         }
 
         RelayedCandidate(uint8_t compId, uint32_t pri, const std::string& foundation,
+            const std::string& baseIP, uint16_t basePort,
             const std::string& relatedIP, uint16_t relatedPort) :
-            Candidate(TypeRef::relayed, ICE::Protocol::udp, compId, pri, foundation, relatedIP, relatedPort, relatedIP, relatedPort)
+            Candidate(TypeRef::relayed, ICE::Protocol::udp, compId, pri, foundation, baseIP, basePort, relatedIP, relatedPort)
         {
         }
         virtual ~RelayedCandidate() {}
